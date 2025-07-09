@@ -1,0 +1,19 @@
+{
+  "template": "https://github.com/woltapp/wolt-python-package-cookiecutter",
+  "commit": "b25684a2c63387153b83a1cc03ea332be8c8279a",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "author_name": "Sina Mansour L.",
+      "author_email": "sina.mansour.lakouraj@gmail.com",
+      "github_username": "sina-mansour",
+      "project_name": "spectranorm",
+      "project_slug": "spectranorm",
+      "package_name": "spectranorm",
+      "project_short_description": "A Python package for spectral normative modeling of neuroimaging and other high-dimensional data.",
+      "_template": "https://github.com/woltapp/wolt-python-package-cookiecutter",
+      "_commit": "b25684a2c63387153b83a1cc03ea332be8c8279a"
+    }
+  },
+  "directory": null
+}
