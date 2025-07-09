@@ -1,20 +1,41 @@
-The MIT License (MIT)
+# Dual Licensing Options
 
-Copyright (c) 2024 Sina Mansour L. <sina.mansour.lakouraj@gmail.com>
+The source code and models within this repository are dual licensed. You may choose to use it under:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+1. The terms of the GNU Affero General Public License version 3 (AGPLv3) for non-commercial purposes; **OR**
+2. A separate commercial license for commercial use.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+---
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+### Non-Commercial License (Open Source)
+
+For non-commercial uses and academic purposes, a license is granted under the terms of the  
+**GNU Affero General Public License version 3 (AGPLv3)**:  
+🔗 https://www.gnu.org/licenses/agpl-3.0.en.html
+
+This includes the right to use, modify, and redistribute the code and models for **non-commercial research and academic use only**, subject to the AGPLv3 conditions.
+
+---
+
+### Commercial License
+
+For any commercial use — including incorporation into products, services, or any revenue-generating activities — you must obtain a separate commercial license.
+
+Please contact the following for commercial licensing inquiries:
+
+- **Sina Mansour L.** (sina.mansour.lakouraj@gmail.com)  
+- **B.T. Thomas Yeo** (thomas.yeo@nus.edu.sg)  
+- **Jonathan Tan** (jonathan_tan@nus.edu.sg)
+
+---
+
+### Reporting Unauthorized Use / Licensing Inquiries
+
+If you become aware of any unauthorized commercial use of this code and models, or have questions about licensing terms, please contact:
+
+- **Jonathan Tan** (jonathan_tan@nus.edu.sg)
+
+---
+
+© 2025 Sina Mansour L. and collaborators.
+All rights reserved.
