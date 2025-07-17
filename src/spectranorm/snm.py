@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import pandas as pd
+
 # Type aliases
 CovariateType = Literal["categorical", "numerical"]
 NumericalEffect = Literal["linear", "spline"]
@@ -92,13 +94,20 @@ class CovariateSpec:
     Specification of a single covariate and how it should be modeled.
 
     Attributes:
-        name: Name of the covariate (e.g., 'age', 'site').
-        cov_type: Type of the covariate ('numerical' or 'categorical').
-        effect: For numerical covariates, how the effect is modeled ('linear'
+        name: str
+            Name of the covariate (e.g., 'age', 'site').
+        cov_type: str
+            Type of the covariate ('numerical' or 'categorical').
+        effect: str
+            For numerical covariates, how the effect is modeled ('linear'
             or 'spline').
-        hierarchical: For categorical covariates, whether to model with a
+        categories: list[str]
+            For categorical covariates, the category labels.
+        hierarchical: bool
+            For categorical covariates, whether to model with a
             hierarchical structure.
-        spline_spec: Optional SplineSpec instance for spline modeling;
+        spline_spec: SplineSpec | None
+            Optional SplineSpec instance for spline modeling;
             required if effect is 'spline'.
 
     Validation:
@@ -106,60 +115,74 @@ class CovariateSpec:
         - If 'effect' is 'spline', 'spline_spec' must be provided.
         - Categorical covariates must specify 'hierarchical'.
         - Categorical covariates cannot have 'effect' or 'spline_spec'.
+        - Categorical covariates must have categories listed.
     """
 
     name: str
     cov_type: CovariateType  # "categorical" or "numerical"
     effect: NumericalEffect | None = None  # Only if numerical
+    categories: list[str] | None = None  # Only if categorical
     hierarchical: bool | None = None  # Only if categorical
     spline_spec: SplineSpec | None = None  # Only for spline modeling
 
     # Validation checks for the covariate specification.
-    def __post_init__(self) -> None:
-        if self.cov_type == "numerical":
-            if self.effect not in {"linear", "spline"}:
-                err = (
-                    f"Numerical covariate '{self.name}' must specify effect as "
-                    "'linear' or 'spline'."
-                )
-                raise ValueError(err)
-            if self.hierarchical is not None:
-                err = (
-                    f"Numerical covariate '{self.name}' should not specify "
-                    "'hierarchical'."
-                )
-                raise ValueError(err)
-            if self.spline_spec is not None and self.effect != "spline":
-                err = (
-                    f"Numerical covariate '{self.name}' should not have spline "
-                    "specification unless effect is 'spline'."
-                )
-                raise ValueError(err)
-            if self.spline_spec is None and self.effect == "spline":
+    def validate_numerical(self) -> None:
+        if self.effect not in {"linear", "spline"}:
+            err = (
+                f"Numerical covariate '{self.name}' must specify effect as "
+                "'linear' or 'spline'."
+            )
+            raise ValueError(err)
+        if self.hierarchical is not None:
+            err = (
+                f"Numerical covariate '{self.name}' should not specify 'hierarchical'."
+            )
+            raise ValueError(err)
+        if self.categories is not None:
+            err = f"Numerical covariate '{self.name}' should not specify 'categories'."
+            raise ValueError(err)
+        if self.spline_spec is None:
+            if self.effect == "spline":
                 err = (
                     f"Numerical covariate '{self.name}' must have spline "
                     "specification if effect is 'spline'."
                 )
-                raise ValueError(err)
+            raise ValueError(err)
+        if self.effect != "spline":
+            err = (
+                f"Numerical covariate '{self.name}' should not have spline "
+                "specification unless effect is 'spline'."
+            )
+            raise ValueError(err)
+
+    def validate_categorical(self) -> None:
+        if self.effect is not None:
+            err = (
+                f"Categorical covariate '{self.name}' should not have a "
+                "numerical effect type."
+            )
+            raise ValueError(err)
+        if self.spline_spec is not None:
+            err = (
+                f"Categorical covariate '{self.name}' should not have spline "
+                "specification."
+            )
+            raise ValueError(err)
+        if self.hierarchical is None:
+            err = (
+                f"Categorical covariate '{self.name}' must specify whether "
+                "it is hierarchical."
+            )
+            raise ValueError(err)
+        if self.categories is None:
+            err = f"Categorical covariate '{self.name}' must specify categories."
+            raise ValueError(err)
+
+    def __post_init__(self) -> None:
+        if self.cov_type == "numerical":
+            self.validate_numerical()
         elif self.cov_type == "categorical":
-            if self.effect is not None:
-                err = (
-                    f"Categorical covariate '{self.name}' should not have a "
-                    "numerical effect type."
-                )
-                raise ValueError(err)
-            if self.spline_spec is not None:
-                err = (
-                    f"Categorical covariate '{self.name}' should not have spline "
-                    "specification."
-                )
-                raise ValueError(err)
-            if self.hierarchical is None:
-                err = (
-                    f"Categorical covariate '{self.name}' must specify whether "
-                    "it is hierarchical."
-                )
-                raise ValueError(err)
+            self.validate_categorical()
         else:
             err = f"Invalid covariate type '{self.cov_type}' for '{self.name}'."
             raise ValueError(err)
@@ -180,8 +203,28 @@ class NormativeModelSpec:
             - A single CSV file path where each row is a subject and
                 columns are features (including the variable of interest).
             - A list of multiple CSV file paths if the data is split across files.
+            - A pandas DataFrame containing the data directly.
+            - A list of pandas DataFrames if the data is split across multiple
+                DataFrames.
     """
 
     variable_of_interest: str
     covariates: list[CovariateSpec]
-    data: str | list[str]
+    data: str | list[str] | pd.DataFrame | list[pd.DataFrame]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.variable_of_interest, str):
+            err = "variable_of_interest must be a string."
+            raise TypeError(err)
+        if not isinstance(self.covariates, list):
+            err = "covariates must be a list of CovariateSpec instances."
+            raise TypeError(err)
+        if not all(isinstance(cov, CovariateSpec) for cov in self.covariates):
+            err = "All items in covariates must be CovariateSpec instances."
+            raise TypeError(err)
+        if not isinstance(self.data, (str, list, pd.DataFrame)):
+            err = (
+                "data must be a string (file path), list of strings (file paths), "
+                "pandas DataFrame, or list of pandas DataFrames."
+            )
+            raise TypeError(err)
