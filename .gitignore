@@ -77,3 +77,6 @@ venv.bak/
 
 # IDEs
 .idea/
+
+# pre packaging temporary files
+temp/
