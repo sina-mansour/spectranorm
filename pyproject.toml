@@ -29,6 +29,11 @@ packages = [
     { include = "spectranorm", from = "src" }
 ]
 
+# Include the data directory
+include = [
+    { path = "src/spectranorm/data/**/*" }
+]
+
 [tool.poetry.dependencies]
 python = ">=3.10, <4.0"
 
