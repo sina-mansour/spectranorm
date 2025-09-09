@@ -88,7 +88,7 @@ def compute_rmse(
             Root Mean Squared Error. (n_outputs,) if multiple outputs are assessed,
             otherwise a scalar.
     """
-    return np.sqrt(compute_mse(y, y_pred))
+    return np.asarray(np.sqrt(compute_mse(y, y_pred)))
 
 
 def compute_mape(
