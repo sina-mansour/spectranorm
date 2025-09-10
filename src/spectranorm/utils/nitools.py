@@ -229,10 +229,11 @@ def compute_barycentric_transformation(
     d21 = np.einsum("ijk,ijk->ij", v2, v1)
 
     # Compute barycentric coordinates
-    den = d00 * d11 - d01 * d01
-    beta = (d11 * d20 - d01 * d21) / den
-    gamma = (d00 * d21 - d01 * d20) / den
-    alpha = 1 - beta - gamma
+    with np.errstate(divide="ignore", invalid="ignore"):
+        den = d00 * d11 - d01 * d01
+        beta = (d11 * d20 - d01 * d21) / den
+        gamma = (d00 * d21 - d01 * d20) / den
+        alpha = 1 - beta - gamma
 
     # Check if target is inside any of the candidate triangles
     is_inside = (alpha >= -tol) & (beta >= -tol) & (gamma >= -tol) & (np.abs(den) > tol)
