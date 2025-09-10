@@ -211,7 +211,10 @@ class NormativePredictions:
         keys = keys or ["mu_estimate", "std_estimate"]
         return np.array([self.predictions[key] for key in keys])
 
-    def to_dataframe(self, index: pd.Index | list[Any] | None = None) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        index: pd.Index[Any] | list[Any] | None = None,
+    ) -> pd.DataFrame:
         """
         Return prediction results as a DataFrame.
 
