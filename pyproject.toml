@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spectranorm"
-version = "0.0.1"
+version = "0.1.0"
 description = "A Python package for spectral normative modeling of neuroimaging and other high-dimensional data."
 authors = [
     "Sina Mansour L. <sina.mansour.lakouraj@gmail.com>",
@@ -43,7 +43,7 @@ include = [
 python = ">=3.10, <3.14"
 numpy = ">=1.25"
 scipy = ">=1.15"
-pandas = ">=2.3"
+pandas = ">=2.2"
 arviz = ">=0.21"
 joblib = ">=1.5"
 nibabel = ">=5.3"
@@ -112,7 +112,7 @@ addopts = """\
 """
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 50  # This can be increased over time (after more tests are added).
 exclude_lines = [
     'if TYPE_CHECKING:',
     'pragma: no cover'
