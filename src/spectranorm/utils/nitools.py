@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import nibabel as nib
 import numpy as np
@@ -41,7 +41,7 @@ logger = general.get_logger(__name__)
 
 def load_gifti_surface(
     file: Path,
-) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int32]]:
+) -> tuple[npt.NDArray[np.floating[Any]], npt.NDArray[np.integer[Any]]]:
     """
     Load a GIfTI surface file.
 
@@ -66,7 +66,7 @@ def load_gifti_surface(
 
 def load_freesurfer_surface(
     file: str,
-) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int32]]:
+) -> tuple[npt.NDArray[np.floating[Any]], npt.NDArray[np.integer[Any]]]:
     """
     Load a FreeSurfer surface file.
 
@@ -90,8 +90,8 @@ def load_freesurfer_surface(
 
 
 def get_euler_number(
-    vertices: npt.NDArray[np.float32],
-    triangles: npt.NDArray[np.int32],
+    vertices: npt.NDArray[np.floating[Any]],
+    triangles: npt.NDArray[np.integer[Any]],
 ) -> int:
     """
     Calculate the Euler number of a surface.
@@ -130,13 +130,13 @@ def get_euler_number(
     n_edges = len(np.unique(edges, axis=0))
 
     # Compute and return the Euler number
-    return n_vertices - n_edges + n_faces
+    return int(n_vertices - n_edges + n_faces)
 
 
 def compute_vertex_areas(
-    vertices: npt.NDArray[np.float32],
-    triangles: npt.NDArray[np.int32],
-) -> npt.NDArray[np.float32]:
+    vertices: npt.NDArray[np.floating[Any]],
+    triangles: npt.NDArray[np.integer[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute the surface area of each vertex in a triangular mesh.
 
@@ -166,13 +166,13 @@ def compute_vertex_areas(
     np.add.at(vertex_areas, triangles[:, 1], triangle_areas / 3)
     np.add.at(vertex_areas, triangles[:, 2], triangle_areas / 3)
 
-    return np.asarray(vertex_areas, dtype=np.float32)
+    return vertex_areas
 
 
 def compute_barycentric_transformation(
-    source_vertices: npt.NDArray[np.float32],
-    source_triangles: npt.NDArray[np.int32],
-    target_vertices: npt.NDArray[np.float32],
+    source_vertices: npt.NDArray[np.floating[Any]],
+    source_triangles: npt.NDArray[np.integer[Any]],
+    target_vertices: npt.NDArray[np.floating[Any]],
     k_candidates: int = 10,
     tol: float = 1e-10,
 ) -> sparse.coo_matrix:
@@ -282,12 +282,12 @@ def compute_barycentric_transformation(
 
 
 def compute_adaptive_area_barycentric_transformation(
-    source_vertices: npt.NDArray[np.float32],  # (n_source, 3)
-    source_triangles: npt.NDArray[np.int32],  # (n_tri_source, 3)
-    source_vertex_areas: npt.NDArray[np.float32],  # (n_source,)
-    target_vertices: npt.NDArray[np.float32],  # (n_target, 3)
-    target_triangles: npt.NDArray[np.int32],  # (n_tri_target, 3)
-    target_vertex_areas: npt.NDArray[np.float32],  # (n_target,)
+    source_vertices: npt.NDArray[np.floating[Any]],  # (n_source, 3)
+    source_triangles: npt.NDArray[np.integer[Any]],  # (n_tri_source, 3)
+    source_vertex_areas: npt.NDArray[np.floating[Any]],  # (n_source,)
+    target_vertices: npt.NDArray[np.floating[Any]],  # (n_target, 3)
+    target_triangles: npt.NDArray[np.integer[Any]],  # (n_tri_target, 3)
+    target_vertex_areas: npt.NDArray[np.floating[Any]],  # (n_target,)
     source_vertex_mask: npt.NDArray[np.bool_] | None = None,  # (n_source,)
     k_candidates: int = 10,  # number of candidate triangles to check
     tol: float = 1e-10,  # tolerance for barycentric coords
@@ -354,8 +354,8 @@ def compute_adaptive_area_barycentric_transformation(
 
     # --- Step 3: Build the adaptive gather matrix
     adap_gather = (
-        sparse.diags((use_forward).astype(np.float32)) @ forward_transform
-        + sparse.diags((~use_forward).astype(np.float32)) @ reverse_gather_transform
+        sparse.diags(use_forward) @ forward_transform
+        + sparse.diags(~use_forward) @ reverse_gather_transform
     )
 
     # --- Step 4: Multiply each row by target vertex area (area contributions)
@@ -376,7 +376,7 @@ def compute_adaptive_area_barycentric_transformation(
     if source_vertex_mask is not None:
         adap_gather = sparse.csr_matrix(
             adap_gather.multiply(
-                source_vertex_mask.astype(np.float32)[None, :],
+                source_vertex_mask[None, :],
             ),
         )
 
@@ -462,9 +462,9 @@ def compute_fsnative_to_fslr32k_transformation(
     left_fsnative_pial_vertices, _ = load_freesurfer_surface(
         f"{subject_freesurfer_directory}/surf/lh.pial",
     )
-    left_fsnative_midthickness_vertices = (
-        left_fsnative_white_vertices + left_fsnative_pial_vertices
-    ) / 2
+    left_fsnative_midthickness_vertices = np.asarray(
+        (left_fsnative_white_vertices + left_fsnative_pial_vertices) * 0.5,
+    )
     left_fsnative_vertex_areas = compute_vertex_areas(
         left_fsnative_midthickness_vertices,
         left_fsnative_triangles,
@@ -478,9 +478,9 @@ def compute_fsnative_to_fslr32k_transformation(
     right_fsnative_pial_vertices, _ = load_freesurfer_surface(
         f"{subject_freesurfer_directory}/surf/rh.pial",
     )
-    right_fsnative_midthickness_vertices = (
-        right_fsnative_white_vertices + right_fsnative_pial_vertices
-    ) / 2
+    right_fsnative_midthickness_vertices = np.asarray(
+        (right_fsnative_white_vertices + right_fsnative_pial_vertices) * 0.5,
+    )
     right_fsnative_vertex_areas = compute_vertex_areas(
         right_fsnative_midthickness_vertices,
         right_fsnative_triangles,
@@ -517,7 +517,7 @@ def compute_fsnative_to_fslr32k_transformation(
 
 def get_fslr_surface_indices_from_cifti(
     cifti_file: Path | None = None,
-) -> npt.NDArray[np.int32]:
+) -> npt.NDArray[np.integer[Any]]:
     """
     Get the fs_LR surface indices from a CIFTI file (excluding the medial wall).
 
@@ -562,7 +562,7 @@ def get_fslr_surface_indices_from_cifti(
 
 def compute_fslr_thickness(
     subject_freesurfer_directory: str,
-) -> npt.NDArray[np.float32]:
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute the fs_LR thickness from FreeSurfer output directory.
 

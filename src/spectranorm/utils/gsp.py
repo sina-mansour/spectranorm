@@ -7,7 +7,7 @@ Graph Signal Processing (GSP) functions for the Spectranorm package.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import joblib
 import numpy as np
@@ -22,7 +22,7 @@ __all__ = [
 
 
 def make_csr_matrix(
-    matrix: sparse.spmatrix | npt.NDArray[np.float64],
+    matrix: sparse.spmatrix | npt.NDArray[np.floating[Any]],
 ) -> sparse.csr_matrix:
     """
     Ensure the input matrix is in CSR format.
@@ -61,9 +61,9 @@ def perform_symmetric_normalization(
 
 
 def compute_symmetric_normalized_laplacian_eigenmodes(
-    adjacency_matrix: sparse.spmatrix | npt.NDArray[np.float64],
+    adjacency_matrix: sparse.spmatrix | npt.NDArray[np.floating[Any]],
     num_eigenvalues: int = 100,
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+) -> tuple[npt.NDArray[np.floating[Any]], npt.NDArray[np.floating[Any]]]:
     """
     Compute the eigenvalues of the symmetric normalized Laplacian.
 
@@ -131,9 +131,9 @@ def convert_adjacency_to_transition_matrix(
 
 
 def compute_random_walk_laplacian_eigenmodes(
-    adjacency_matrix: sparse.spmatrix | npt.NDArray[np.float64],
+    adjacency_matrix: sparse.spmatrix | npt.NDArray[np.floating[Any]],
     num_eigenvalues: int = 100,
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+) -> tuple[npt.NDArray[np.floating[Any]], npt.NDArray[np.floating[Any]]]:
     """
     Compute the eigenvalues of the random walk Laplacian.
 
@@ -187,8 +187,8 @@ class EigenmodeBasis:
             Eigenvectors corresponding to the eigenvalues (n_modes, n_features).
     """
 
-    eigenvalues: npt.NDArray[np.float32]
-    eigenvectors: npt.NDArray[np.float32]
+    eigenvalues: npt.NDArray[np.floating[Any]]
+    eigenvectors: npt.NDArray[np.floating[Any]]
 
     # Additional attributes
     def __post_init__(self) -> None:
@@ -235,9 +235,9 @@ class EigenmodeBasis:
 
     def encode(
         self,
-        signals: npt.NDArray[np.float32],
+        signals: npt.NDArray[np.floating[Any]],
         n_modes: int | None = None,
-    ) -> npt.NDArray[np.float32]:
+    ) -> npt.NDArray[np.floating[Any]]:
         """
         Encode a signal using the eigenmode basis.
 
@@ -267,8 +267,8 @@ class EigenmodeBasis:
         data_paths: list[str],
         output_path: str | None,
         n_modes: int | None = None,
-        data_loader: Callable[[str], npt.NDArray[np.float32]] = np.load,
-    ) -> npt.NDArray[np.float32]:
+        data_loader: Callable[[str], npt.NDArray[np.floating[Any]]] = np.load,
+    ) -> npt.NDArray[np.floating[Any]]:
         """
         Load and encode a list of data using the eigenmode basis.
 
@@ -308,7 +308,10 @@ class EigenmodeBasis:
         if n_modes is None:
             n_modes = self.n_modes
         # Load and encode data
-        encoded_data = np.nan * np.zeros((len(data_paths), n_modes), dtype=np.float32)
+        encoded_data = np.nan * np.zeros(
+            (len(data_paths), n_modes),
+            dtype=self.eigenvectors.dtype,
+        )
         for i, data_path in enumerate(data_paths):
             # Load (using data_loader) and Encode
             encoded_data[i, :] = self.encode(

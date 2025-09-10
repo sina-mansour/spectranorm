@@ -6,7 +6,7 @@ Utility functions for computing various model metrics in the Spectranorm package
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -26,9 +26,9 @@ __all__ = [
 
 
 def compute_mae(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Mean Absolute Error (MAE) between true and predicted values.
 
@@ -48,9 +48,9 @@ def compute_mae(
 
 
 def compute_mse(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Mean Squared Error (MSE) between true and predicted values.
 
@@ -70,9 +70,9 @@ def compute_mse(
 
 
 def compute_rmse(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Root Mean Squared Error (RMSE) between true and predicted values.
 
@@ -92,9 +92,9 @@ def compute_rmse(
 
 
 def compute_mape(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Mean Absolute Percentage Error (MAPE) between true and predicted values.
 
@@ -114,9 +114,9 @@ def compute_mape(
 
 
 def compute_r2(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute R-squared (coefficient of determination) between true and predicted values.
 
@@ -138,9 +138,9 @@ def compute_r2(
 
 
 def compute_expv(
-    y: npt.NDArray[np.float64],
-    y_pred: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    y: npt.NDArray[np.floating[Any]],
+    y_pred: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Explained Variance (EXPV) between true and predicted values.
 
@@ -160,9 +160,9 @@ def compute_expv(
 
 
 def compute_msll(
-    model_log_likelihoods: npt.NDArray[np.float64],
-    baseline_log_likelihoods: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    model_log_likelihoods: npt.NDArray[np.floating[Any]],
+    baseline_log_likelihoods: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Mean Standardized Log Loss (MSLL) based on model and baseline log
     likelihoods.
@@ -189,10 +189,10 @@ def compute_msll(
 
 
 def compute_bic(
-    model_log_likelihoods: npt.NDArray[np.float64],
+    model_log_likelihoods: npt.NDArray[np.floating[Any]],
     n_params: int,
     n_samples: int,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute Bayesian Information Criterion (BIC) for model evaluation.
 

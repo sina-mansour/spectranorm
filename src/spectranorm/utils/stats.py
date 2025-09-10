@@ -6,7 +6,7 @@ Statistical utility functions for the Spectranorm package.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy import stats
@@ -23,8 +23,8 @@ __all__ = [
 
 
 def compute_centiles_from_z_scores(
-    z_scores: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    z_scores: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Convert z-scores to percentiles.
 
@@ -37,14 +37,14 @@ def compute_centiles_from_z_scores(
             Array of percentiles corresponding to the z-scores.
     """
     # Convert z-scores to percentiles using the cumulative distribution function (CDF)
-    return stats.norm.cdf(z_scores) * 100
+    return np.asarray(stats.norm.cdf(z_scores) * 100)
 
 
 def compute_log_likelihood(
-    observations: npt.NDArray[np.float64],
-    predicted_mus: npt.NDArray[np.float64],
-    predicted_sigmas: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    observations: npt.NDArray[np.floating[Any]],
+    predicted_mus: npt.NDArray[np.floating[Any]],
+    predicted_sigmas: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute the log likelihood of observations given predicted means and standard
     deviations.
@@ -67,11 +67,11 @@ def compute_log_likelihood(
 
 
 def compute_censored_log_likelihood(
-    observations: npt.NDArray[np.float64],
-    predicted_mus: npt.NDArray[np.float64],
-    predicted_sigmas: npt.NDArray[np.float64],
+    observations: npt.NDArray[np.floating[Any]],
+    predicted_mus: npt.NDArray[np.floating[Any]],
+    predicted_sigmas: npt.NDArray[np.floating[Any]],
     censored_quantile: float = 0.01,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute censored log likelihood, replacing extreme low likelihoods with a censoring
     threshold.
@@ -113,7 +113,7 @@ def compute_censored_log_likelihood(
 
 
 def compute_correlation_significance_by_fisher_z(
-    correlation_matrix: npt.NDArray[np.float64],
+    correlation_matrix: npt.NDArray[np.floating[Any]],
     n_samples: int,
     correlation_threshold: float = 0.0,
 ) -> npt.NDArray[np.bool_]:

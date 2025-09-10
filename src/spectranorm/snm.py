@@ -42,15 +42,15 @@ NumericalEffect = Literal["linear", "spline"]
 ModelType = Literal["HBR", "BLR"]
 
 # Constants
-DEFAULT_SPLINE_DF = 5
-DEFAULT_SPLINE_DEGREE = 3
-DEFAULT_SPLINE_EXTRAPOLATION_FACTOR = 0.1
-DEFAULT_ADVI_ITERATIONS = 20_000
-DEFAULT_ADVI_CONVERGENCE_TOLERANCE = 1e-3
-DEFAULT_RANDOM_SEED = 12345
-DEFAULT_ADAM_LEARNING_RATE = 0.1
-DEFAULT_ADAM_LEARNING_RATE_DECAY = 0.9995
-DEFAULT_COVARIANCE_AUGMENTATION_MULTIPLICITY = 1
+DEFAULT_SPLINE_DF: int = 5
+DEFAULT_SPLINE_DEGREE: int = 3
+DEFAULT_SPLINE_EXTRAPOLATION_FACTOR: float = 0.1
+DEFAULT_ADVI_ITERATIONS: int = 20_000
+DEFAULT_ADVI_CONVERGENCE_TOLERANCE: float = 1e-3
+DEFAULT_RANDOM_SEED: int = 12345
+DEFAULT_ADAM_LEARNING_RATE: float = 0.1
+DEFAULT_ADAM_LEARNING_RATE_DECAY: float = 0.9995
+DEFAULT_COVARIANCE_AUGMENTATION_MULTIPLICITY: int = 1
 
 # Set up logging
 logger = utils.general.get_logger(__name__)
@@ -71,14 +71,14 @@ class NormativePredictions:
             - [Optional] Additional evaluation metrics for the predictions.
     """
 
-    predictions: dict[str, npt.NDArray[np.float64]]
-    evaluations: dict[str, npt.NDArray[np.float64] | float] = field(
+    predictions: dict[str, npt.NDArray[np.floating[Any]]]
+    evaluations: dict[str, npt.NDArray[np.floating[Any]] | float] = field(
         default_factory=dict,
     )
 
     def extend_predictions(
         self,
-        variable_of_interest: npt.NDArray[np.float64],
+        variable_of_interest: npt.NDArray[np.floating[Any]],
     ) -> NormativePredictions:
         """
         Extend the NormativePredictions (predictions dictionary) with additional
@@ -112,9 +112,9 @@ class NormativePredictions:
 
     def evaluate_predictions(
         self,
-        variable_of_interest: npt.NDArray[np.float64],
-        train_mean: npt.NDArray[np.float64],
-        train_std: npt.NDArray[np.float64],
+        variable_of_interest: npt.NDArray[np.floating[Any]],
+        train_mean: npt.NDArray[np.floating[Any]],
+        train_std: npt.NDArray[np.floating[Any]],
         n_params: int,
     ) -> NormativePredictions:
         """
@@ -195,7 +195,7 @@ class NormativePredictions:
 
         return self
 
-    def to_array(self, keys: list[str] | None = None) -> npt.NDArray[np.float64]:
+    def to_array(self, keys: list[str] | None = None) -> npt.NDArray[np.floating[Any]]:
         """
         Return prediction results as a list of NumPy arrays.
 
@@ -484,10 +484,10 @@ class CovariateSpec:
 
     def make_spline_bases(
         self,
-        values: npt.NDArray[np.float64],
+        values: npt.NDArray[np.floating[Any]],
         *,
         include_intercept: bool = True,
-    ) -> npt.NDArray[np.float64]:
+    ) -> npt.NDArray[np.floating[Any]]:
         """
         Create B-spline basis expansion functions for a given covariate.
 
@@ -961,7 +961,7 @@ class DirectNormativeModel:
 
     def _build_model_coordinates(
         self,
-        observations: npt.NDArray[np.int64],
+        observations: npt.NDArray[np.integer[Any]],
     ) -> dict[str, Any]:
         """
         Build the model coordinates for the training DataFrame.
@@ -1017,7 +1017,7 @@ class DirectNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        spline_bases: dict[str, npt.NDArray[np.float64]],
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 10,
     ) -> None:
         """
@@ -1045,7 +1045,7 @@ class DirectNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        category_indices: dict[str, npt.NDArray[np.int64]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 10,
         hierarchical_sigma_prior: float = 1,
     ) -> None:
@@ -1105,8 +1105,8 @@ class DirectNormativeModel:
     def _model_all_mean_effects(
         self,
         train_data: pd.DataFrame,
-        spline_bases: dict[str, npt.NDArray[np.float64]],
-        category_indices: dict[str, npt.NDArray[np.int64]],
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
     ) -> list[TensorVariable[Any, Any]]:
         """
         Model all covariate mean effects.
@@ -1186,7 +1186,7 @@ class DirectNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        spline_bases: dict[str, npt.NDArray[np.float64]],
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 0.1,
     ) -> None:
         """
@@ -1214,7 +1214,7 @@ class DirectNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        category_indices: dict[str, npt.NDArray[np.int64]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 0.1,
         hierarchical_sigma_prior: float = 0.1,
     ) -> None:
@@ -1274,8 +1274,8 @@ class DirectNormativeModel:
     def _model_all_variance_effects(
         self,
         train_data: pd.DataFrame,
-        spline_bases: dict[str, npt.NDArray[np.float64]],
-        category_indices: dict[str, npt.NDArray[np.int64]],
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
     ) -> list[TensorVariable[Any, Any]]:
         """
         Model all covariate variance effects.
@@ -1328,7 +1328,7 @@ class DirectNormativeModel:
         self,
         mean_effects: list[TensorVariable[Any, Any]],
         variance_effects: list[TensorVariable[Any, Any]],
-        standardized_voi: npt.NDArray[np.float64],
+        standardized_voi: npt.NDArray[np.floating[Any]],
     ) -> None:
         """
         Combine all effects to model the observed data likelihood.
@@ -1445,10 +1445,10 @@ class DirectNormativeModel:
             self.model_params["sample_size"] = variable_of_interest.shape[0]
 
             # A dictionary for precomputed bspline basis functions
-            spline_bases: dict[str, npt.NDArray[np.float64]] = {}
+            spline_bases: dict[str, npt.NDArray[np.floating[Any]]] = {}
 
             # A dictionary for factorized categories
-            category_indices: dict[str, npt.NDArray[np.int64]] = {}
+            category_indices: dict[str, npt.NDArray[np.integer[Any]]] = {}
 
             # Initialize parameter count
             self.model_params["n_params"] = 0
@@ -1481,7 +1481,7 @@ class DirectNormativeModel:
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
-    ) -> npt.NDArray[np.float64]:
+    ) -> npt.NDArray[np.floating[Any]]:
         """
         Internal method to predict the mean of the variable of interest.
         """
@@ -1536,7 +1536,7 @@ class DirectNormativeModel:
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
-    ) -> npt.NDArray[np.float64]:
+    ) -> npt.NDArray[np.floating[Any]]:
         """
         Internal method to predict the standard deviation of the variable of interest.
         """
@@ -1891,7 +1891,7 @@ class CovarianceNormativeModel:
 
     def _build_model_coordinates(
         self,
-        observations: npt.NDArray[np.int64],
+        observations: npt.NDArray[np.integer[Any]],
     ) -> dict[str, Any]:
         """
         Build the model coordinates for the training DataFrame.
@@ -1947,7 +1947,7 @@ class CovarianceNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        spline_bases: dict[str, npt.NDArray[np.float64]],
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 1,
     ) -> None:
         """
@@ -1975,7 +1975,7 @@ class CovarianceNormativeModel:
         train_data: pd.DataFrame,
         cov: CovariateSpec,
         effects_list: list[TensorVariable[Any, Any]],
-        category_indices: dict[str, npt.NDArray[np.int64]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 1,
         sigma_hierarchical_prior: float = 0.1,
     ) -> None:
@@ -2035,11 +2035,11 @@ class CovarianceNormativeModel:
     def _combine_all_correlation_effects(
         self,
         z_transformed_correlation_effects: list[TensorVariable[Any, Any]],
-        combination_indices: npt.NDArray[np.int64],
-        combination_weights: npt.NDArray[np.float64],
-        standardized_vois: npt.NDArray[np.float64],
-        standardized_vois_mu_estimate: npt.NDArray[np.float64],
-        standardized_vois_std_estimate: npt.NDArray[np.float64],
+        combination_indices: npt.NDArray[np.integer[Any]],
+        combination_weights: npt.NDArray[np.floating[Any]],
+        standardized_vois: npt.NDArray[np.floating[Any]],
+        standardized_vois_mu_estimate: npt.NDArray[np.floating[Any]],
+        standardized_vois_std_estimate: npt.NDArray[np.floating[Any]],
     ) -> None:
         """
         Combine all effects to model the observed data likelihood from the list of
@@ -2251,10 +2251,10 @@ class CovarianceNormativeModel:
             z_transformed_correlation_effects = []
 
             # A dictionary for precomputed bspline basis functions
-            spline_bases: dict[str, npt.NDArray[np.float64]] = {}
+            spline_bases: dict[str, npt.NDArray[np.floating[Any]]] = {}
 
             # A dictionary for factorized categories
-            category_indices: dict[str, npt.NDArray[np.int64]] = {}
+            category_indices: dict[str, npt.NDArray[np.integer[Any]]] = {}
 
             # Model the z-transformed correlation between the variables of interest
             self.model_params["n_params"] = 0  # Initialize parameter count
@@ -2531,7 +2531,7 @@ class SpectralNormativeModel:
 
     def _validate_fit_input(
         self,
-        encoded_train_data: npt.NDArray[np.float64],
+        encoded_train_data: npt.NDArray[np.floating[Any]],
         n_modes: int,
     ) -> None:
         """
@@ -2553,10 +2553,10 @@ class SpectralNormativeModel:
 
     def identify_sparse_covariance_structure(
         self,
-        data: npt.NDArray[np.float64],
+        data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         correlation_threshold: float,
-    ) -> npt.NDArray[np.int64]:
+    ) -> npt.NDArray[np.integer[Any]]:
         """
         Identify the sparse cross-basis covariance structure in the phenotype.
         This method analyzes the encoded phenotype to determine the covariance
@@ -2619,7 +2619,7 @@ class SpectralNormativeModel:
 
     @staticmethod
     def _is_valid_covariance_structure(
-        covariance_structure: npt.NDArray[np.int64] | float,
+        covariance_structure: npt.NDArray[np.integer[Any]] | float,
     ) -> bool:
         """
         Verify the validity of the sparse covariance structure.
@@ -2633,11 +2633,11 @@ class SpectralNormativeModel:
             and covariance_structure.shape[1] == expected_ncols
         ):
             return False
-        return np.issubdtype(covariance_structure.dtype, np.int64)
+        return np.issubdtype(covariance_structure.dtype, np.integer)
 
     def fit_single_direct(
         self,
-        variable_of_interest: npt.NDArray[np.float64],
+        variable_of_interest: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         save_directory: Path | None = None,
@@ -2699,8 +2699,8 @@ class SpectralNormativeModel:
 
     def fit_single_covariance(
         self,
-        variable_of_interest_1: npt.NDArray[np.float64],
-        variable_of_interest_2: npt.NDArray[np.float64],
+        variable_of_interest_1: npt.NDArray[np.floating[Any]],
+        variable_of_interest_2: npt.NDArray[np.floating[Any]],
         direct_model_params_1: dict[str, Any],
         direct_model_params_2: dict[str, Any],
         covariates_dataframe: pd.DataFrame,
@@ -2788,7 +2788,7 @@ class SpectralNormativeModel:
 
     def fit_all_direct(
         self,
-        encoded_train_data: npt.NDArray[np.float64],
+        encoded_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_modes: int = -1,
@@ -2854,7 +2854,7 @@ class SpectralNormativeModel:
 
     def fit_all_covariance(
         self,
-        encoded_train_data: npt.NDArray[np.float64],
+        encoded_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_jobs: int = -1,
@@ -2928,14 +2928,14 @@ class SpectralNormativeModel:
 
     def fit(
         self,
-        encoded_train_data: npt.NDArray[np.float64],
+        encoded_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_modes: int = -1,
         n_jobs: int = -1,
         save_directory: Path | None = None,
         save_separate: bool = False,
-        covariance_structure: npt.NDArray[np.float64] | float = 0.25,
+        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.25,
     ) -> None:
         """
         Fit the spectral normative model to the provided encoded training data.
@@ -3078,10 +3078,10 @@ class SpectralNormativeModel:
 
     def _predict_from_spectral_estimates(
         self,
-        encoded_query: npt.NDArray[np.float64],
-        eigenmode_mu_estimates: npt.NDArray[np.float64],
-        eigenmode_std_estimates: npt.NDArray[np.float64],
-        rho_estimates: npt.NDArray[np.float64],
+        encoded_query: npt.NDArray[np.floating[Any]],
+        eigenmode_mu_estimates: npt.NDArray[np.floating[Any]],
+        eigenmode_std_estimates: npt.NDArray[np.floating[Any]],
+        rho_estimates: npt.NDArray[np.floating[Any]],
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
         n_modes: int,
@@ -3139,12 +3139,12 @@ class SpectralNormativeModel:
 
     def predict(
         self,
-        encoded_query: npt.NDArray[np.float64],
+        encoded_query: npt.NDArray[np.floating[Any]],
         test_covariates: pd.DataFrame,
         *,
         extended: bool = False,
         model_params: dict[str, Any] | None = None,
-        encoded_test_data: npt.NDArray[np.float64] | None = None,
+        encoded_test_data: npt.NDArray[np.floating[Any]] | None = None,
         n_modes: int | None = None,
     ) -> NormativePredictions:
         """
@@ -3257,10 +3257,10 @@ class SpectralNormativeModel:
 
     def evaluate(
         self,
-        encoded_query: npt.NDArray[np.float64],
+        encoded_query: npt.NDArray[np.floating[Any]],
         test_covariates: pd.DataFrame,
-        encoded_test_data: npt.NDArray[np.float64],
-        query_train_moments: npt.NDArray[np.float64] | None = None,
+        encoded_test_data: npt.NDArray[np.floating[Any]],
+        query_train_moments: npt.NDArray[np.floating[Any]] | None = None,
         model_params: dict[str, Any] | None = None,
         n_modes: int | None = None,
     ) -> NormativePredictions:
