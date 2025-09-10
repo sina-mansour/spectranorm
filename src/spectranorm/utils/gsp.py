@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-import joblib  # type: ignore[import-untyped]
+import joblib
 import numpy as np
 from scipy import sparse
 

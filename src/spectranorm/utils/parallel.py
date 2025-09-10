@@ -7,17 +7,17 @@ Utility functions for spectranorm's parallel execution (e.g. via Joblib).
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import Any, Iterable, Iterator, Sized
+from typing import Any, Iterable, Sized
 
 import tqdm.auto as tqdm
-from joblib import Parallel  # type: ignore[import-untyped]
+from joblib import Parallel
 
 __all__ = [
     "ParallelTqdm",
 ]
 
 
-class ParallelTqdm(Parallel):  # type: ignore[no-any-unimported, misc]
+class ParallelTqdm(Parallel):
     """joblib.Parallel, but with a tqdm progressbar
 
     Additional parameters:
@@ -52,6 +52,10 @@ class ParallelTqdm(Parallel):  # type: ignore[no-any-unimported, misc]
     80%|████████  | 8/10 [00:02<00:00,  3.12tasks/s]
 
     """
+
+    _original_iterator: Iterable[Any] | None  # mimic joblib internal attribute
+    n_dispatched_tasks: int
+    n_completed_tasks: int
 
     def __init__(
         self,
@@ -89,7 +93,7 @@ class ParallelTqdm(Parallel):  # type: ignore[no-any-unimported, misc]
 
     __call__.__doc__ = Parallel.__call__.__doc__
 
-    def dispatch_one_batch(self, iterator: Iterator[Any]) -> Any:
+    def dispatch_one_batch(self, iterator: Iterable[Any]) -> Any:
         # start progress_bar, if not started yet.
         if self.progress_bar is None:
             self.progress_bar = tqdm.tqdm(
