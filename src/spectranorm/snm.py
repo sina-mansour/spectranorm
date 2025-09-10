@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from pytensor.tensor.variable import TensorVariable
 
+__all__ = ["utils"]
+
 # ruff adjustments
 # ruff: noqa: PLR0913
 
@@ -1486,8 +1488,9 @@ class DirectNormativeModel:
         Internal method to predict the mean of the variable of interest.
         """
         # Calculate mean effect
-        mu_estimate = np.zeros(test_covariates.shape[0]) + float(
-            model_params["posterior_means"]["global_intercept"],
+        mu_estimate = np.full(
+            test_covariates.shape[0],
+            model_params["posterior_means"]["global_intercept"].item(),
         )
 
         for cov in self.spec.covariates:
@@ -1541,8 +1544,9 @@ class DirectNormativeModel:
         Internal method to predict the standard deviation of the variable of interest.
         """
         # Calculate deviation effect
-        log_sigma_estimate = np.zeros(test_covariates.shape[0]) + float(
-            model_params["posterior_means"]["global_variance_baseline"],
+        log_sigma_estimate = np.full(
+            test_covariates.shape[0],
+            model_params["posterior_means"]["global_variance_baseline"].item(),
         )
 
         for cov in self.spec.covariates:
@@ -2849,7 +2853,7 @@ class SpectralNormativeModel:
                 n_jobs=n_jobs,
                 total_tasks=n_modes,
                 desc="Fitting direct models",
-            )(tasks),
+            )(tasks),  # pyright: ignore[reportCallIssue]
         )
 
     def fit_all_covariance(
@@ -2924,7 +2928,7 @@ class SpectralNormativeModel:
             n_jobs=n_jobs,
             total_tasks=self.sparse_covariance_structure.shape[0],
             desc="Fitting covariance models",
-        )(tasks)
+        )(tasks)  # pyright: ignore[reportCallIssue]
 
     def fit(
         self,
