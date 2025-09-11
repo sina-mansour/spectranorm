@@ -1,4 +1,5 @@
-site_name: "spectranorm"
+site_name: "Spectranorm"
+site_url: https://sina-mansour.github.io/spectranorm/
 repo_url: https://github.com/sina-mansour/spectranorm
 
 theme:
