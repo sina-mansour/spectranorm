@@ -242,7 +242,7 @@ class EigenmodeBasis:
         Encode a signal using the eigenmode basis.
 
         Args:
-            signal: np.ndarray
+            signals: np.ndarray
                 Signals to encode (n_signals, n_features).
             n_modes: int | None
                 Number of modes to use for encoding. If None, use all available modes.
