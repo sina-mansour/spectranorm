@@ -8,6 +8,8 @@
       
       
       
+        <link rel="canonical" href="https://sina-mansour.github.io/spectranorm/api_docs/">
+      
       
         <link rel="prev" href="..">
       
@@ -20,7 +22,7 @@
     
     
       
-        <title>API documentation - spectranorm</title>
+        <title>API documentation - Spectranorm</title>
       
     
     
@@ -90,7 +92,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="spectranorm" class="md-header__button md-logo" aria-label="spectranorm" data-md-component="logo">
+    <a href=".." title="Spectranorm" class="md-header__button md-logo" aria-label="Spectranorm" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -104,7 +106,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            spectranorm
+            Spectranorm
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -226,13 +228,13 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="spectranorm" class="md-nav__button md-logo" aria-label="spectranorm" data-md-component="logo">
+    <a href=".." title="Spectranorm" class="md-nav__button md-logo" aria-label="Spectranorm" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    spectranorm
+    Spectranorm
   </label>
   
     <div class="md-nav__source">
@@ -19074,7 +19076,7 @@ Eigenvectors corresponding to the eigenvalues (n_modes, n_features).</p>
 <span class="sd">        Encode a signal using the eigenmode basis.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            signal: np.ndarray</span>
+<span class="sd">            signals: np.ndarray</span>
 <span class="sd">                Signals to encode (n_signals, n_features).</span>
 <span class="sd">            n_modes: int | None</span>
 <span class="sd">                Number of modes to use for encoding. If None, use all available modes.</span>
@@ -19197,9 +19199,10 @@ Eigenvectors corresponding to the eigenvalues (n_modes, n_features).</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                <code>signal</code>
+                <code>signals</code>
             </td>
             <td>
+                  <code><span title="numpy.typing.NDArray">NDArray</span>[<span title="numpy.floating">floating</span>[<span title="typing.Any">Any</span>]]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -19294,7 +19297,7 @@ Encoded signal in the eigenmode basis (n_signals, n_modes).</p>
 <span class="sd">    Encode a signal using the eigenmode basis.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        signal: np.ndarray</span>
+<span class="sd">        signals: np.ndarray</span>
 <span class="sd">            Signals to encode (n_signals, n_features).</span>
 <span class="sd">        n_modes: int | None</span>
 <span class="sd">            Number of modes to use for encoding. If None, use all available modes.</span>
