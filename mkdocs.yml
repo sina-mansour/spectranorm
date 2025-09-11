@@ -5,7 +5,7 @@ repo_url: https://github.com/sina-mansour/spectranorm
 theme:
   name: material
   icon:
-    logo: fontawesome-solid-brain
+    logo: fontawesome/solid/brain
   features:
     - navigation.top
   palette:
