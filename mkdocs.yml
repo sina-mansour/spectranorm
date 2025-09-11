@@ -4,6 +4,10 @@ repo_url: https://github.com/sina-mansour/spectranorm
 
 theme:
   name: material
+  icon:
+    logo: fontawesome-solid-brain
+  features:
+    - navigation.top
   palette:
     - scheme: default
       toggle:
@@ -16,8 +20,8 @@ theme:
 
 nav:
   - Introduction: 'index.md'
-  - api_docs.md
-  - changelog.md
+  - API: api_docs.md
+  - Changelog: changelog.md
 
 markdown_extensions:
   - pymdownx.snippets:
