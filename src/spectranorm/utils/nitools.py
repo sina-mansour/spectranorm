@@ -354,8 +354,8 @@ def compute_adaptive_area_barycentric_transformation(
 
     # --- Step 3: Build the adaptive gather matrix
     adap_gather = (
-        sparse.diags(use_forward) @ forward_transform
-        + sparse.diags(~use_forward) @ reverse_gather_transform
+        sparse.diags((use_forward).astype(float)) @ forward_transform
+        + sparse.diags((~use_forward).astype(float)) @ reverse_gather_transform
     )
 
     # --- Step 4: Multiply each row by target vertex area (area contributions)
