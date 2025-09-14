@@ -21881,8 +21881,8 @@ tol : float
 
     <span class="c1"># --- Step 3: Build the adaptive gather matrix</span>
     <span class="n">adap_gather</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">sparse</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span><span class="n">use_forward</span><span class="p">)</span> <span class="o">@</span> <span class="n">forward_transform</span>
-        <span class="o">+</span> <span class="n">sparse</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span><span class="o">~</span><span class="n">use_forward</span><span class="p">)</span> <span class="o">@</span> <span class="n">reverse_gather_transform</span>
+        <span class="n">sparse</span><span class="o">.</span><span class="n">diags</span><span class="p">((</span><span class="n">use_forward</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">))</span> <span class="o">@</span> <span class="n">forward_transform</span>
+        <span class="o">+</span> <span class="n">sparse</span><span class="o">.</span><span class="n">diags</span><span class="p">((</span><span class="o">~</span><span class="n">use_forward</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">))</span> <span class="o">@</span> <span class="n">reverse_gather_transform</span>
     <span class="p">)</span>
 
     <span class="c1"># --- Step 4: Multiply each row by target vertex area (area contributions)</span>
