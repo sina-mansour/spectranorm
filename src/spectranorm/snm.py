@@ -665,8 +665,6 @@ class DirectNormativeModel:
         spec: NormativeModelSpec
             Specification of the normative model including variable of interest,
             covariates, and data source.
-        batch_covariates: list[str]
-            List of covariate names that are treated as batch effects.
         defaults: dict
             Default parameters for the model, including spline specifications,
             ADVI iterations, convergence tolerance, random seed, and Adam optimizer
@@ -674,7 +672,6 @@ class DirectNormativeModel:
     """
 
     spec: NormativeModelSpec
-    batch_covariates: list[str]
     defaults: dict[str, Any] = field(
         default_factory=lambda: {
             "spline_df": DEFAULT_SPLINE_DF,
@@ -692,10 +689,7 @@ class DirectNormativeModel:
         """
         String representation of the DirectNormativeModel instance.
         """
-        return (
-            f"DirectNormativeModel(\n\tspec={self.spec}, \n\t"
-            f"batch_covariates={self.batch_covariates}\n)"
-        )
+        return f"DirectNormativeModel(\n\tspec={self.spec}\n)"
 
     @staticmethod
     def _validate_init_args(
@@ -813,7 +807,6 @@ class DirectNormativeModel:
                 influencing_mean=influencing_mean,
                 influencing_variance=influencing_variance,
             ),
-            batch_covariates=batch_covariates,
         )
 
         # Populate the spline_kwargs with defaults if not provided
@@ -915,7 +908,6 @@ class DirectNormativeModel:
 
         model_dict = {
             "spec": self.spec,
-            "batch_covariates": self.batch_covariates,
             "defaults": self.defaults,
         }
         if hasattr(self, "model_params"):
@@ -956,7 +948,6 @@ class DirectNormativeModel:
         # Create an instance of the class
         instance = cls(
             spec=model_dict["spec"],
-            batch_covariates=model_dict["batch_covariates"],
         )
 
         # Set the attributes from the loaded model dictionary
@@ -1701,8 +1692,6 @@ class CovarianceNormativeModel:
         spec: CovarianceModelSpec
             Specification of the covariance model including variables of interest,
             and list of covariates.
-        batch_covariates: list[str]
-            List of covariate names that are treated as batch effects.
         defaults: dict
             Default parameters for the model, including spline specifications,
             ADVI iterations, convergence tolerance, random seed, and Adam optimizer
@@ -1710,7 +1699,6 @@ class CovarianceNormativeModel:
     """
 
     spec: CovarianceModelSpec
-    batch_covariates: list[str]
     defaults: dict[str, Any] = field(
         default_factory=lambda: {
             "spline_df": DEFAULT_SPLINE_DF,
@@ -1729,10 +1717,7 @@ class CovarianceNormativeModel:
         """
         String representation of the CovarianceNormativeModel instance.
         """
-        return (
-            f"CovarianceNormativeModel(\n\tspec={self.spec}, \n\t"
-            f"batch_covariates={self.batch_covariates}\n)"
-        )
+        return f"CovarianceNormativeModel(\n\tspec={self.spec}\n)"
 
     @classmethod
     def from_direct_model(
@@ -1786,7 +1771,6 @@ class CovarianceNormativeModel:
                 covariates=direct_model.spec.covariates,
                 influencing_covariance=influencing_covariance,
             ),
-            batch_covariates=direct_model.batch_covariates,
         )
 
         # update defaults
@@ -1840,7 +1824,6 @@ class CovarianceNormativeModel:
 
         model_dict = {
             "spec": self.spec,
-            "batch_covariates": self.batch_covariates,
             "defaults": self.defaults,
         }
         if hasattr(self, "model_params"):
@@ -1881,7 +1864,6 @@ class CovarianceNormativeModel:
         # Create an instance of the class
         instance = cls(
             spec=model_dict["spec"],
-            batch_covariates=model_dict["batch_covariates"],
         )
 
         # Set the attributes from the loaded model dictionary
@@ -2546,7 +2528,6 @@ class SpectralNormativeModel:
         # Save the model
         model_dict = {
             "spec": self.base_model.spec,
-            "batch_covariates": self.base_model.batch_covariates,
             "defaults": self.base_model.defaults,
             "eigenmode_basis": self.eigenmode_basis,
         }
@@ -2615,9 +2596,12 @@ class SpectralNormativeModel:
             correlation_threshold=correlation_threshold,
         )
 
-        # Now iterate over all batch covariates
-        for batch_effect in self.base_model.batch_covariates:
-            # For every batch re-evaluate correlations
+        # Now iterate over all categorical covariates
+        for cov in self.base_model.spec.covariates:
+            if cov.cov_type != "categorical":
+                continue
+            batch_effect = cov.name
+            # For every covariate batch re-evaluate correlations
             for batch in pd.unique(covariates_dataframe[batch_effect]):
                 # Make a mask for the current batch
                 batch_mask = covariates_dataframe[batch_effect] == batch
@@ -2703,7 +2687,6 @@ class SpectralNormativeModel:
                 influencing_mean=self.base_model.spec.influencing_mean,
                 influencing_variance=self.base_model.spec.influencing_variance,
             ),
-            batch_covariates=self.base_model.batch_covariates,
             defaults=self.base_model.defaults,
         )
 
@@ -3394,7 +3377,6 @@ class SpectralNormativeModel:
             eigenmode_basis=model_dict["eigenmode_basis"],
             base_model=DirectNormativeModel(
                 spec=model_dict["spec"],
-                batch_covariates=model_dict["batch_covariates"],
                 defaults=model_dict["defaults"],
             ),
         )
