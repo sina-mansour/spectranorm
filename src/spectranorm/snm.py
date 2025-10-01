@@ -13,6 +13,7 @@ https://sina-mansour.github.io/spectranorm
 
 from __future__ import annotations
 
+import reprlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -402,6 +403,26 @@ class CovariateSpec:
     hierarchical: bool | None = None  # Only if categorical
     spline_spec: SplineSpec | None = None  # Only for spline modeling
     moments: tuple[float, float] | None = None  # Only for linear effects
+
+    def __repr__(self) -> str:
+        """
+        String representation of the CovariateSpec instance.
+        """
+        representation = f"CovariateSpec(name={self.name}, cov_type={self.cov_type}"
+        if self.cov_type == "numerical":
+            representation += f", effect={self.effect}"
+            if self.effect == "spline" and self.spline_spec is not None:
+                representation += f", spline_spec={self.spline_spec}"
+            if self.effect == "linear" and self.moments is not None:
+                representation += f", moments={self.moments}"
+        elif self.cov_type == "categorical":
+            representation += f", hierarchical={self.hierarchical}"
+            if self.categories is not None:
+                representation += (
+                    f", categories={reprlib.repr(self.categories.tolist())}"
+                )
+        representation += ")"
+        return representation
 
     # Validation checks for the covariate specification.
     def validate_numerical(self) -> None:
