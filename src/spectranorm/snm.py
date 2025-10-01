@@ -1495,6 +1495,7 @@ class DirectNormativeModel:
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
+        predict_without: list[str],
     ) -> npt.NDArray[np.floating[Any]]:
         """
         Internal method to predict the mean of the variable of interest.
@@ -1506,7 +1507,9 @@ class DirectNormativeModel:
         )
 
         for cov in self.spec.covariates:
-            if cov.name in self.spec.influencing_mean:
+            if (cov.name in self.spec.influencing_mean) and (
+                cov.name not in predict_without
+            ):
                 if cov.cov_type == "numerical":
                     if cov.effect == "linear":
                         if cov.moments is not None:  # to satisfy type checker
@@ -1551,6 +1554,7 @@ class DirectNormativeModel:
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
+        predict_without: list[str],
     ) -> npt.NDArray[np.floating[Any]]:
         """
         Internal method to predict the standard deviation of the variable of interest.
@@ -1562,7 +1566,10 @@ class DirectNormativeModel:
         )
 
         for cov in self.spec.covariates:
-            if cov.name in self.spec.influencing_variance:
+            if (
+                cov.name in self.spec.influencing_variance
+                and cov.name not in predict_without
+            ):
                 if cov.cov_type == "numerical":
                     if cov.effect == "linear":
                         if cov.moments is not None:  # to satisfy type checker
@@ -1609,6 +1616,7 @@ class DirectNormativeModel:
         *,
         extended: bool = False,
         model_params: dict[str, Any] | None = None,
+        predict_without: list[str] | None = None,
     ) -> NormativePredictions:
         """
         Predict normative moments (mean, std) for new data using the fitted model.
@@ -1617,6 +1625,8 @@ class DirectNormativeModel:
             test_covariates: pd.DataFrame
                 DataFrame containing the new covariate data to predict.
                 This must include all specified covariates.
+                Note: covariates listed in predict_without will be ignored and are
+                hence not required.
             extended: bool
                 If True, return additional stats such as log-likelihood, centiles, etc.
                 Note that extended predictions require variable_of_interest to be
@@ -1624,13 +1634,21 @@ class DirectNormativeModel:
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
+            predict_without: list[str] | None
+                Optional list of covariate names to ignore during prediction.
+                This can be used to check the effect of removing certain covariates
+                from the model.
 
         Returns:
             NormativePredictions: Object containing the predicted moments (mean, std)
                 for the variable of interest.
         """
         # Validate the new data
-        validation_columns = [cov.name for cov in self.spec.covariates]
+        validation_columns = [
+            cov.name
+            for cov in self.spec.covariates
+            if cov.name not in (predict_without or [])
+        ]
         if extended:
             validation_columns.append(self.spec.variable_of_interest)
         utils.general.validate_dataframe(test_covariates, validation_columns)
@@ -1642,8 +1660,16 @@ class DirectNormativeModel:
         # Calculate mean and variance effects and store in the predictions object
         predictions = NormativePredictions(
             {
-                "mu_estimate": self._predict_mu(test_covariates, model_params),
-                "std_estimate": self._predict_std(test_covariates, model_params),
+                "mu_estimate": self._predict_mu(
+                    test_covariates,
+                    model_params,
+                    (predict_without or []),
+                ),
+                "std_estimate": self._predict_std(
+                    test_covariates,
+                    model_params,
+                    (predict_without or []),
+                ),
             },
         )
 
@@ -2327,6 +2353,7 @@ class CovarianceNormativeModel:
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any] | None = None,
+        predict_without: list[str] | None = None,
     ) -> NormativePredictions:
         """
         Predict correlation for new data (from covariates) using the fitted model.
@@ -2335,16 +2362,26 @@ class CovarianceNormativeModel:
             test_covariates: pd.DataFrame
                 DataFrame containing the new covariate data to predict.
                 This must include all specified covariates.
+                Note: covariates listed in predict_without will be ignored and are
+                hence not required.
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
+            predict_without: list[str] | None
+                Optional list of covariate names to ignore during prediction.
+                This can be used to check the effect of removing certain covariates
+                from the model.
 
         Returns:
             NormativePredictions: Object containing the predicted pairwise correlations
                 for the variables of interest.
         """
         # Validate the new data
-        validation_columns = [cov.name for cov in self.spec.covariates]
+        validation_columns = [
+            cov.name
+            for cov in self.spec.covariates
+            if cov.name not in (predict_without or [])
+        ]
         utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # Parameters
@@ -2360,7 +2397,9 @@ class CovarianceNormativeModel:
         )
 
         for cov in self.spec.covariates:
-            if cov.name in self.spec.influencing_covariance:
+            if (cov.name in self.spec.influencing_covariance) and (
+                cov.name not in (predict_without or [])
+            ):
                 if cov.cov_type == "numerical":
                     if cov.effect == "linear":
                         if cov.moments is None:
@@ -3154,6 +3193,7 @@ class SpectralNormativeModel:
         model_params: dict[str, Any] | None = None,
         encoded_test_data: npt.NDArray[np.floating[Any]] | None = None,
         n_modes: int | None = None,
+        predict_without: list[str] | None = None,
     ) -> NormativePredictions:
         """
         Predict normative moments (mean, std) for new data using the fitted spectral
@@ -3171,6 +3211,8 @@ class SpectralNormativeModel:
             test_covariates: pd.DataFrame
                 DataFrame containing the new covariate data to predict.
                 This must include all specified covariates.
+                Note: covariates listed in predict_without will be ignored and are
+                hence not required.
             extended: bool (default: False)
                 If True, return additional stats such as log-likelihood, centiles, etc.
                 Note that extended predictions require encoded_test_data to be
@@ -3185,6 +3227,10 @@ class SpectralNormativeModel:
             n_modes: int | None
                 Optional number of modes to use for the prediction. If not provided,
                 the stored number of modes from model.fit() will be used.
+            predict_without: list[str] | None
+                Optional list of covariate names to ignore during prediction.
+                This can be used to check the effect of removing certain covariates
+                from the model.
 
         Returns:
             pd.DataFrame: DataFrame containing the predicted moments (mean, std) for
@@ -3210,6 +3256,7 @@ class SpectralNormativeModel:
                 self.base_model.predict(
                     test_covariates,
                     model_params=direct_model_params,
+                    predict_without=predict_without,
                 )
                 .to_array(["mu_estimate", "std_estimate"])
                 .T
@@ -3230,6 +3277,7 @@ class SpectralNormativeModel:
                 covariance_model.predict(
                     test_covariates,
                     model_params=covariance_model_params,
+                    predict_without=predict_without,
                 )
                 .to_array(["correlation_estimate"])
                 .T
