@@ -1705,6 +1705,71 @@ class DirectNormativeModel:
             n_params=self.model_params["n_params"],
         )
 
+    def harmonize(
+        self,
+        data: pd.DataFrame,
+        covariates_to_harmonize: list[str],
+        *,
+        model_params: dict[str, Any] | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Harmonize the variable of interest in the data to remove effects of
+        certain covariates (e.g. batch).
+
+        Args:
+            data: pd.DataFrame
+                DataFrame containing the data to harmonize.
+                It must include all specified covariates and the variable of interest.
+            covariates_to_harmonize: list[str]
+                List of covariate names to harmonize.
+                The partial effects of these covariates will be removed from the
+                variable of interest, and the harmonized values will be returned.
+            model_params: dict | None
+                Optional dictionary of model parameters to use. If not provided,
+                the stored parameters from model.fit() will be used.
+
+        Returns:
+            npt.NDArray[np.floating[Any]]: Array of harmonized values for the
+                variable of interest.
+        """
+        # Validate the new data
+        validation_columns = [cov.name for cov in self.spec.covariates]
+        validation_columns.append(self.spec.variable_of_interest)
+        utils.general.validate_dataframe(data, validation_columns)
+
+        # Parameters
+        if model_params is None:
+            model_params = self.model_params
+
+        # Predict the mean and std with all covariates
+        full_predictions = self.predict(
+            test_covariates=data,
+            model_params=model_params,
+            predict_without=[],
+        )
+
+        # Predict the mean and std without the covariates to harmonize
+        reduced_predictions = self.predict(
+            test_covariates=data,
+            model_params=model_params,
+            predict_without=covariates_to_harmonize,
+        )
+
+        # First standardize the variable of interest based on the full model
+        voi_standardized = (
+            data[self.spec.variable_of_interest].to_numpy()
+            - full_predictions.predictions["mu_estimate"]
+        ) / full_predictions.predictions["std_estimate"]
+
+        # Then return the harmonized values based on the reduced model
+        return np.asarray(
+            (
+                voi_standardized * reduced_predictions.predictions["std_estimate"]
+                + reduced_predictions.predictions["mu_estimate"]
+            ),
+            dtype=np.float64,
+        )
+
 
 @dataclass
 class CovarianceNormativeModel:
