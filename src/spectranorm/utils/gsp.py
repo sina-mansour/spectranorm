@@ -233,6 +233,39 @@ class EigenmodeBasis:
         }
         joblib.dump(data, filepath)
 
+    def reduce(self, n_modes: int, *, inplace: bool = True) -> EigenmodeBasis:
+        """
+        Reduce the EigenmodeBasis to only contain the first n_modes.
+
+        This method is useful to reduce the size of the basis for efficiency (e.g.,
+        to remove less important modes/degenerate modes before further processing).
+
+        Args:
+            n_modes: int
+                Number of modes to retain. This must be less than or equal to the
+                current number of modes.
+            inplace: bool
+                Whether to modify the current instance or return a new one.
+                By default, this is True (modify in place, optimizing memory usage).
+
+        Returns:
+            EigenmodeBasis
+                A new EigenmodeBasis instance with reduced modes.
+        """
+        if n_modes > self.n_modes:
+            err = f"Cannot reduce to {n_modes} modes, only {self.n_modes} available."
+            raise ValueError(err)
+        if inplace:
+            self.eigenvalues = self.eigenvalues[:n_modes]
+            self.eigenvectors = self.eigenvectors[:n_modes, :]
+            self.n_modes = n_modes
+            return self
+        # else return a new instance
+        return EigenmodeBasis(
+            eigenvalues=self.eigenvalues[:n_modes],
+            eigenvectors=self.eigenvectors[:n_modes, :],
+        )
+
     def encode(
         self,
         signals: npt.NDArray[np.floating[Any]],
