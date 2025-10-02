@@ -1298,8 +1298,8 @@ class DirectNormativeModel:
         # Model the global variance
         global_variance_baseline = pm.Normal(
             "global_variance_baseline",
-            mu=-0.5,
-            sigma=0.3,
+            mu=-0.0,
+            sigma=0.5,
             dims=("scalar",),
         )
         variance_effects.append(global_variance_baseline)
