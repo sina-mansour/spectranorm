@@ -7,7 +7,7 @@ Graph Signal Processing (GSP) functions for the Spectranorm package.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import joblib
 import numpy as np
@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 __all__ = [
     "compute_symmetric_normalized_laplacian_eigenmodes",
 ]
+
+MmapMode = Literal["r+", "r", "w+", "c"]
 
 
 def make_csr_matrix(
@@ -203,18 +205,20 @@ class EigenmodeBasis:
             raise ValueError(err)
 
     @classmethod
-    def load(cls, filepath: str) -> EigenmodeBasis:
+    def load(cls, filepath: str, mmap_mode: MmapMode = "r") -> EigenmodeBasis:
         """
         Load an EigenmodeBasis instance from a joblib file.
 
         Args:
             filepath: str
                 Path to the joblib file.
+            mmap_mode: str
+                Memory mapping mode for joblib (default: "r").
 
         Returns:
             EigenmodeBasis instance
         """
-        data = joblib.load(filepath)
+        data = joblib.load(filepath, mmap_mode=mmap_mode)
         # Expecting the saved file to contain a dict with these keys:
         # 'eigenvalues', 'eigenvectors'
         return cls(eigenvalues=data["eigenvalues"], eigenvectors=data["eigenvectors"])
@@ -229,6 +233,9 @@ class EigenmodeBasis:
             compress: int
                 Compression level for joblib (default: 3).
         """
+        # first, load memory-mapped arrays into memory
+        self.eigenvalues = self.eigenvalues[:]
+        self.eigenvectors = self.eigenvectors[:]
         data = {
             "eigenvalues": self.eigenvalues,
             "eigenvectors": self.eigenvectors,
