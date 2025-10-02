@@ -219,19 +219,21 @@ class EigenmodeBasis:
         # 'eigenvalues', 'eigenvectors'
         return cls(eigenvalues=data["eigenvalues"], eigenvectors=data["eigenvectors"])
 
-    def save(self, filepath: str) -> None:
+    def save(self, filepath: str, compress: int = 3) -> None:
         """
         Save the EigenmodeBasis instance to a joblib file.
 
         Args:
             filepath: str
                 Path to save the joblib file.
+            compress: int
+                Compression level for joblib (default: 3).
         """
         data = {
             "eigenvalues": self.eigenvalues,
             "eigenvectors": self.eigenvectors,
         }
-        joblib.dump(data, filepath)
+        joblib.dump(data, filepath, compress=compress)
 
     def reduce(self, n_modes: int, *, inplace: bool = True) -> EigenmodeBasis:
         """
