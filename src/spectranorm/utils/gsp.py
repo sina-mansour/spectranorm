@@ -7,6 +7,7 @@ Graph Signal Processing (GSP) functions for the Spectranorm package.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import joblib
@@ -205,15 +206,16 @@ class EigenmodeBasis:
             raise ValueError(err)
 
     @classmethod
-    def load(cls, filepath: str, mmap_mode: MmapMode = "r") -> EigenmodeBasis:
+    def load(cls, filepath: str, mmap_mode: MmapMode | None = "r") -> EigenmodeBasis:
         """
         Load an EigenmodeBasis instance from a joblib file.
 
         Args:
             filepath: str
                 Path to the joblib file.
-            mmap_mode: str
+            mmap_mode: str | None
                 Memory mapping mode for joblib (default: "r").
+                You can set this to None to disable memory-mapping.
 
         Returns:
             EigenmodeBasis instance
@@ -223,7 +225,13 @@ class EigenmodeBasis:
         # 'eigenvalues', 'eigenvectors'
         return cls(eigenvalues=data["eigenvalues"], eigenvectors=data["eigenvectors"])
 
-    def save(self, filepath: str, compress: int = 3) -> None:
+    def save(
+        self,
+        filepath: str,
+        compress: int = 0,
+        *,
+        overwrite: bool = False,
+    ) -> None:
         """
         Save the EigenmodeBasis instance to a joblib file.
 
@@ -231,11 +239,20 @@ class EigenmodeBasis:
             filepath: str
                 Path to save the joblib file.
             compress: int
-                Compression level for joblib (default: 3).
+                Compression level for joblib (default: 0).
+                Note: Compression is disabled by default to enable support for
+                memory-mapped arrays. However, if you do not need memory-mapping,
+                and want to reduce file size, you can enable compression by setting
+                the compress parameter to a positive integer.
+            overwrite: bool
+                Whether to overwrite an existing file (default: False).
         """
-        # first, load memory-mapped arrays into memory
-        self.eigenvalues = self.eigenvalues[:]
-        self.eigenvectors = self.eigenvectors[:]
+        # Handle file overwrite
+        if Path(filepath).exists():
+            if not overwrite:
+                err = f"File '{filepath}' already exists and overwrite is disabled."
+                raise FileExistsError(err)
+            Path(filepath).unlink(missing_ok=True)
         data = {
             "eigenvalues": self.eigenvalues,
             "eigenvectors": self.eigenvectors,
