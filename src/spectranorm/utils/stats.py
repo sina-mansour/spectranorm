@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy import stats
+from statsmodels.stats.multitest import multipletests
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "compute_censored_log_likelihood",
     "compute_centiles_from_z_scores",
-    "compute_correlation_significance_by_fisher_z",
+    "compute_correlation_significance",
     "compute_log_likelihood",
 ]
 
@@ -112,11 +113,12 @@ def compute_censored_log_likelihood(
     )
 
 
-def compute_correlation_significance_by_fisher_z(
+def compute_correlation_significance(
     correlation_matrix: npt.NDArray[np.floating[Any]],
     n_samples: int,
     correlation_threshold: float = 0.0,
-) -> npt.NDArray[np.bool_]:
+    correction_method: str = "fdr_bh",
+) -> npt.NDArray[np.floating[Any]]:
     """
     Compute the significance of correlations between variables in the data matrix,
     thresholded by a specified correlation value, using Fisher's z-transformation.
@@ -129,18 +131,45 @@ def compute_correlation_significance_by_fisher_z(
         correlation_threshold: float (default=0.0)
             The correlation threshold above which correlations are to be considered
             significant.
+        correction_method: str (default='fdr_bh')
+            Method for multiple testing correction. Options include 'bonferroni',
+            'holm', 'fdr_bh', etc. See statsmodels.stats.multitest.multipletests for
+            more details.
 
     Returns:
         np.ndarray
-            A boolean matrix indicating significantly large correlations between
-            variables. The True values indicate correlations that are significantly
-            larger than the threshold.
+            A matrix of p-values indicating the significance of each correlation.
+            (Testing if the correlation is significantly greater than the threshold.)
     """
+    # set the diagonal to zero to avoid NaNs in arctanh
+    np.fill_diagonal(correlation_matrix, 0)
+
     # Fisher's z-transformation
     fisher_z = np.arctanh(correlation_matrix)
     z_threshold = np.arctanh(correlation_threshold)
+
     # Standard error of the Fisher z
     se = 1 / np.sqrt(n_samples - 3)
-    # Apply the correlation threshold and return significance matrix
-    # 95% confidence interval
-    return np.asarray(np.abs(fisher_z) > (z_threshold + (se * 1.96)))
+
+    # Compute the test statistic
+    z_score = (np.abs(fisher_z) - z_threshold) / se
+
+    # compute uncorrected p-values for one-tailed test
+    p_values = 1 - stats.norm.cdf(z_score)
+
+    # Take upper triangle of the p-value matrix (excluding diagonal)
+    triu_indices = np.triu_indices_from(p_values, k=1)
+    p_values_triu = p_values[triu_indices]
+
+    # Apply multiple testing correction
+    _, corrected_p_values, _, _ = multipletests(
+        p_values_triu,
+        method=correction_method,
+    )
+
+    # Reconstruct the full p-value matrix
+    p_values_corrected = np.full_like(p_values, fill_value=np.nan, dtype=np.float64)
+    p_values_corrected[triu_indices] = corrected_p_values
+    p_values_corrected[(triu_indices[1], triu_indices[0])] = corrected_p_values
+
+    return p_values_corrected

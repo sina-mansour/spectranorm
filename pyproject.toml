@@ -143,3 +143,7 @@ disallow_any_unimported = true
 [[tool.mypy.overrides]]
 module = ["patsy"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["statsmodels.*"]
+ignore_missing_imports = true

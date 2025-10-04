@@ -205,6 +205,12 @@ class EigenmodeBasis:
             )
             raise ValueError(err)
 
+    def __repr__(self) -> str:
+        """
+        String representation of the EigenmodeBasis.
+        """
+        return f"EigenmodeBasis(n_modes={self.n_modes}, n_features={self.n_features})"
+
     @classmethod
     def load(cls, filepath: str, mmap_mode: MmapMode | None = "r") -> EigenmodeBasis:
         """

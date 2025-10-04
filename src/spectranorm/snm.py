@@ -2664,7 +2664,6 @@ class SpectralNormativeModel:
     def identify_sparse_covariance_structure(
         self,
         data: npt.NDArray[np.floating[Any]],
-        covariates_dataframe: pd.DataFrame,
         correlation_threshold: float,
     ) -> npt.NDArray[np.integer[Any]]:
         """
@@ -2680,10 +2679,6 @@ class SpectralNormativeModel:
             data: np.ndarray
                 The encoded training data representing the phenotype in the graph
                 frequency domain.
-            covariates_dataframe: pd.DataFrame
-                The DataFrame containing covariates for the samples. The batch
-                covariates will be used to group the samples and identify the
-                important covariance pairs.
             correlation_threshold: float
                 The threshold to include covariance pairs if significantly correlated.
                 Should be between 0 and 1.
@@ -2694,35 +2689,15 @@ class SpectralNormativeModel:
                 identified sparse covariance structure.
         """
         # Start with correlation structure across the whole sample
-        corr_max = utils.stats.compute_correlation_significance_by_fisher_z(
+        corrected_p_values = utils.stats.compute_correlation_significance(
             np.corrcoef(data.T),
             n_samples=data.shape[0],
             correlation_threshold=correlation_threshold,
         )
 
-        # Now iterate over all categorical covariates
-        for cov in self.base_model.spec.covariates:
-            if cov.cov_type != "categorical":
-                continue
-            batch_effect = cov.name
-            # For every covariate batch re-evaluate correlations
-            for batch in pd.unique(covariates_dataframe[batch_effect]):
-                # Make a mask for the current batch
-                batch_mask = covariates_dataframe[batch_effect] == batch
-                # Update maximums
-                corr_max = np.maximum.reduce(
-                    [
-                        corr_max,
-                        utils.stats.compute_correlation_significance_by_fisher_z(
-                            np.corrcoef(data[batch_mask].T),
-                            n_samples=data[batch_mask].shape[0],
-                            correlation_threshold=correlation_threshold,
-                        ),
-                    ],
-                )
-
         # Now compute the sparsity structure based on the resulting matrix
-        rows, cols = np.where(np.abs(corr_max) > 0)
+        alpha = 0.05  # Significance level for corrected p-values
+        rows, cols = np.where(corrected_p_values < alpha)
 
         # Remove redundant and duplicate pairs
         rows_lim = rows[rows < cols]
@@ -3047,7 +3022,7 @@ class SpectralNormativeModel:
         n_jobs: int = -1,
         save_directory: Path | None = None,
         save_separate: bool = False,
-        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.25,
+        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.1,
     ) -> None:
         """
         Fit the spectral normative model to the provided encoded training data.
@@ -3142,7 +3117,6 @@ class SpectralNormativeModel:
             self.sparse_covariance_structure = (
                 self.identify_sparse_covariance_structure(
                     encoded_train_z_scores,
-                    covariates_dataframe,
                     covariance_structure,
                 )
             )
