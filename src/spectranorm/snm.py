@@ -3299,7 +3299,7 @@ class SpectralNormativeModel:
                 )
                 .to_array(["mu_estimate", "std_estimate"])
                 .T
-                for direct_model_params in model_params["direct_model_params"]
+                for direct_model_params in model_params["direct_model_params"][:n_modes]
             ],
         ).T  # estimates have a shape of (n_samples, n_modes)
 
@@ -3472,3 +3472,90 @@ class SpectralNormativeModel:
             instance.model_params = model_dict["model_params"]
 
         return instance
+
+    def harmonize(
+        self,
+        encoded_query: npt.NDArray[np.floating[Any]],
+        covariates_dataframe: pd.DataFrame,
+        encoded_data: npt.NDArray[np.floating[Any]],
+        covariates_to_harmonize: list[str],
+        *,
+        model_params: dict[str, Any] | None = None,
+        n_modes: int | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Harmonize the variables of interest in the data to remove effects of
+        certain covariates (e.g. batch). This method uses the spectral normative model
+        to harmonize one or several variables of interest defined by the encoded query.
+
+        Args:
+            encoded_query: np.ndarray
+                Encoded query data defining the normative variable of interest.
+                Can be provided as:
+                - shape = (n_modes) for a single query vector
+                - shape = (n_modes, n_queries) for multiple queries predicted at once
+            covariates_to_harmonize: list[str]
+                List of covariate names to harmonize.
+                The partial effects of these covariates will be removed from the
+                variable of interest, and the harmonized values will be returned.
+            covariates_dataframe: pd.DataFrame
+                DataFrame containing covariate information for the data to harmonize.
+                This must include all specified covariates. The dataframe is expected
+                to have all covariates as columns and samples as rows.
+            encoded_data: np.ndarray | None
+                Encoded data for the variable(s) of interest being modeled. Expects a
+                numpy array of shape: (n_samples, n_modes).
+            model_params: dict | None
+                Optional dictionary of model parameters to use. If not provided,
+                the stored parameters from model.fit() will be used.
+            n_modes: int | None
+                Optional number of modes to use for the prediction. If not provided,
+                the stored number of modes from model.fit() will be used.
+
+        Returns:
+            npt.NDArray[np.floating[Any]]: Array of harmonized values for the
+                variable of interest.
+        """
+        # Validate the new data
+        validation_columns = [cov.name for cov in self.base_model.spec.covariates]
+        utils.general.validate_dataframe(covariates_dataframe, validation_columns)
+
+        # Find n_modes
+        if n_modes is None:
+            n_modes = int(self.model_params["n_modes"])
+
+        # Parameters
+        if model_params is None:
+            model_params = self.model_params
+
+        # Predict the mean and std with all covariates
+        full_predictions = self.predict(
+            encoded_query=encoded_query,
+            test_covariates=covariates_dataframe,
+            model_params=model_params,
+            n_modes=n_modes,
+            predict_without=[],
+        )
+
+        # Predict the mean and std without the covariates to harmonize
+        reduced_predictions = self.predict(
+            encoded_query=encoded_query,
+            test_covariates=covariates_dataframe,
+            model_params=model_params,
+            n_modes=n_modes,
+            predict_without=covariates_to_harmonize,
+        )
+
+        # First standardize the variable of interest based on the full model
+        vois_standardized = (
+            encoded_data - full_predictions.predictions["mu_estimate"]
+        ) / full_predictions.predictions["std_estimate"]
+
+        # Then return the harmonized values based on the reduced model
+        return np.asarray(
+            (
+                vois_standardized * reduced_predictions.predictions["std_estimate"]
+                + reduced_predictions.predictions["mu_estimate"]
+            ),
+            dtype=np.float64,
+        )
