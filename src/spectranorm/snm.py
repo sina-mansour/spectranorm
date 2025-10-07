@@ -2630,15 +2630,70 @@ class SpectralNormativeModel:
             "spectral_normative_model",
         )
 
+        # Save the eigenmode basis separately
+        self.eigenmode_basis.save(str(saved_model_dir / "eigenmode_basis.joblib"))
+
         # Save the model
         model_dict = {
             "spec": self.base_model.spec,
             "defaults": self.base_model.defaults,
-            "eigenmode_basis": self.eigenmode_basis,
         }
         if hasattr(self, "model_params"):
             model_dict["model_params"] = self.model_params
         joblib.dump(model_dict, saved_model_dir / "spectral_model_dict.joblib")
+
+    @classmethod
+    def load_model(
+        cls,
+        directory: Path,
+        mmap_mode: MmapMode | None = "r",
+    ) -> SpectralNormativeModel:
+        """
+        Load a spectral normative model instance from the specified save directory.
+
+        Args:
+            directory: Path
+                Directory to load the fitted model from. A subdirectory named
+                "spectral_normative_model" will be searched within this directory.
+            mmap_mode: MmapMode | None
+                Memory mapping mode for joblib (default: "r").
+                You can set this to None to disable memory-mapping.
+        """
+        # Validate the load directory
+        directory = Path(directory)
+        saved_model_dir = utils.general.validate_load_directory(
+            directory,
+            "spectral_normative_model",
+        )
+
+        # Check if the pickled joblib file exists in this directory
+        for filename in ["spectral_model_dict.joblib", "eigenmode_basis.joblib"]:
+            if not (saved_model_dir / filename).exists():
+                err = f"Model Load Error: Required file '{filename}' does not exist."
+                raise FileNotFoundError(err)
+
+        # Load the pickled model dictionary
+        model_dict = joblib.load(saved_model_dir / "spectral_model_dict.joblib")
+
+        # Load the eigenmode basis
+        eigenmode_basis = utils.gsp.EigenmodeBasis.load(
+            str(saved_model_dir / "eigenmode_basis.joblib"),
+            mmap_mode=mmap_mode,
+        )
+
+        # Create an instance of the class
+        instance = cls(
+            eigenmode_basis=eigenmode_basis,
+            base_model=DirectNormativeModel(
+                spec=model_dict["spec"],
+                defaults=model_dict["defaults"],
+            ),
+        )
+
+        if "model_params" in model_dict:
+            instance.model_params = model_dict["model_params"]
+
+        return instance
 
     def _validate_fit_input(
         self,
@@ -3434,52 +3489,6 @@ class SpectralNormativeModel:
             train_std=query_train_moments[1],
             n_params=model_params["n_params"],
         )
-
-    @classmethod
-    def load_model(
-        cls,
-        directory: Path,
-        mmap_mode: MmapMode | None = "r",
-    ) -> SpectralNormativeModel:
-        """
-        Load a spectral normative model instance from the specified save directory.
-
-        Args:
-            directory: Path
-                Directory to load the fitted model from. A subdirectory named
-                "spectral_normative_model" will be searched within this directory.
-            mmap_mode: MmapMode | None
-                Memory mapping mode for joblib (default: "r").
-                You can set this to None to disable memory-mapping.
-        """
-        # Validate the load directory
-        directory = Path(directory)
-        saved_model_dir = utils.general.validate_load_directory(
-            directory,
-            "spectral_normative_model",
-        )
-
-        # Check if the pickled joblib file exists in this directory
-        pickled_file = saved_model_dir / "spectral_model_dict.joblib"
-        if not pickled_file.exists():
-            err = f"Model Load Error: Pickled file '{pickled_file}' does not exist."
-            raise FileNotFoundError(err)
-
-        model_dict = joblib.load(pickled_file, mmap_mode=mmap_mode)
-
-        # Create an instance of the class
-        instance = cls(
-            eigenmode_basis=model_dict["eigenmode_basis"],
-            base_model=DirectNormativeModel(
-                spec=model_dict["spec"],
-                defaults=model_dict["defaults"],
-            ),
-        )
-
-        if "model_params" in model_dict:
-            instance.model_params = model_dict["model_params"]
-
-        return instance
 
     def harmonize(
         self,
