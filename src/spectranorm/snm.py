@@ -43,6 +43,7 @@ __all__ = ["utils"]
 CovariateType = Literal["categorical", "numerical"]
 NumericalEffect = Literal["linear", "spline"]
 ModelType = Literal["HBR", "BLR"]
+MmapMode = Literal["r+", "r", "w+", "c"]
 
 # Constants
 DEFAULT_SPLINE_DF: int = 5
@@ -3435,7 +3436,11 @@ class SpectralNormativeModel:
         )
 
     @classmethod
-    def load_model(cls, directory: Path) -> SpectralNormativeModel:
+    def load_model(
+        cls,
+        directory: Path,
+        mmap_mode: MmapMode | None = "r",
+    ) -> SpectralNormativeModel:
         """
         Load a spectral normative model instance from the specified save directory.
 
@@ -3443,6 +3448,9 @@ class SpectralNormativeModel:
             directory: Path
                 Directory to load the fitted model from. A subdirectory named
                 "spectral_normative_model" will be searched within this directory.
+            mmap_mode: MmapMode | None
+                Memory mapping mode for joblib (default: "r").
+                You can set this to None to disable memory-mapping.
         """
         # Validate the load directory
         directory = Path(directory)
@@ -3457,7 +3465,7 @@ class SpectralNormativeModel:
             err = f"Model Load Error: Pickled file '{pickled_file}' does not exist."
             raise FileNotFoundError(err)
 
-        model_dict = joblib.load(pickled_file)
+        model_dict = joblib.load(pickled_file, mmap_mode=mmap_mode)
 
         # Create an instance of the class
         instance = cls(
