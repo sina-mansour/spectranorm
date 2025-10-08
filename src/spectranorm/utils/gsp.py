@@ -219,7 +219,7 @@ class EigenmodeBasis:
         Args:
             filepath: str
                 Path to the joblib file.
-            mmap_mode: str | None
+            mmap_mode: MmapMode | None
                 Memory mapping mode for joblib (default: "r").
                 You can set this to None to disable memory-mapping.
 
@@ -326,6 +326,45 @@ class EigenmodeBasis:
             n_modes = self.n_modes
 
         return signals @ self.eigenvectors[:n_modes].T
+
+    def decode(
+        self,
+        encoded_signals: npt.NDArray[np.floating[Any]],
+        n_modes: int | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Decode a signal from the eigenmode basis.
+
+        Args:
+            encoded_signals: np.ndarray
+                Encoded signals in the eigenmode basis (n_signals, n_modes).
+            n_modes: int | None
+                Number of modes used for decoding. If None, use all available modes.
+                This should not exceed the number of modes in the encoded_signals
+                nor the number of modes in the eigenmode basis.
+
+        Returns:
+            np.ndarray
+                Decoded signal in the original feature space (n_signals, n_features).
+        """
+        if n_modes is None:
+            n_modes = self.n_modes
+
+        if encoded_signals.shape[-1] < n_modes:
+            err = (
+                f"Encoded signal must have at least {n_modes} modes, "
+                f"got {encoded_signals.shape[-1]}."
+            )
+            raise ValueError(err)
+
+        if n_modes > self.n_modes:
+            err = (
+                f"Cannot decode with {n_modes} modes, "
+                f"only {self.n_modes} available in the basis."
+            )
+            raise ValueError(err)
+
+        return encoded_signals @ self.eigenvectors[:n_modes]
 
     def load_and_encode_data_list(
         self,
