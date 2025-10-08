@@ -13,7 +13,6 @@ https://sina-mansour.github.io/spectranorm
 
 from __future__ import annotations
 
-import reprlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -412,16 +411,10 @@ class CovariateSpec:
         representation = f"CovariateSpec(name={self.name}, cov_type={self.cov_type}"
         if self.cov_type == "numerical":
             representation += f", effect={self.effect}"
-            if self.effect == "spline" and self.spline_spec is not None:
-                representation += f", spline_spec={self.spline_spec}"
-            if self.effect == "linear" and self.moments is not None:
-                representation += f", moments={self.moments}"
         elif self.cov_type == "categorical":
             representation += f", hierarchical={self.hierarchical}"
             if self.categories is not None:
-                representation += (
-                    f", categories={reprlib.repr(self.categories.tolist())}"
-                )
+                representation += f", n_categories={len(self.categories.tolist())}"
         representation += ")"
         return representation
 
@@ -690,7 +683,7 @@ class DirectNormativeModel:
         """
         String representation of the DirectNormativeModel instance.
         """
-        return f"DirectNormativeModel(\n\tspec={self.spec}\n)"
+        return f"DirectNormativeModel(spec={self.spec})"
 
     @staticmethod
     def _validate_init_args(
@@ -1131,7 +1124,7 @@ class DirectNormativeModel:
         global_intercept = pm.Normal(
             "global_intercept",
             mu=0,
-            sigma=10,
+            sigma=5,
             dims=("scalar",),
         )
         mean_effects.append(global_intercept)
@@ -1146,7 +1139,7 @@ class DirectNormativeModel:
                             train_data,
                             cov,
                             mean_effects,
-                            sigma_prior=10,
+                            sigma_prior=5,
                         )
                     elif cov.effect == "spline":
                         self._model_spline_mean_effect(
@@ -1154,7 +1147,7 @@ class DirectNormativeModel:
                             cov,
                             mean_effects,
                             spline_bases,
-                            sigma_prior=10,
+                            sigma_prior=5,
                         )
                 elif cov.cov_type == "categorical":
                     self._model_categorical_mean_effect(
@@ -1162,8 +1155,8 @@ class DirectNormativeModel:
                         cov,
                         mean_effects,
                         category_indices,
-                        sigma_prior=10,
-                        hierarchical_sigma_prior=1,
+                        sigma_prior=1,
+                        hierarchical_sigma_prior=5,
                     )
                 else:
                     err = f"Invalid covariate type '{cov.cov_type}' for '{cov.name}'."
