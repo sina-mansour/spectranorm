@@ -3217,7 +3217,6 @@ class SpectralNormativeModel:
         eigenmode_mu_estimates: npt.NDArray[np.floating[Any]],
         eigenmode_std_estimates: npt.NDArray[np.floating[Any]],
         rho_estimates: npt.NDArray[np.floating[Any]],
-        test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
         n_modes: int,
     ) -> NormativePredictions:
@@ -3225,6 +3224,10 @@ class SpectralNormativeModel:
         Internal method to predict only the mean and sigma for new data using the fitted
         spectral moments.
         """
+        # Constrain mu and std estimates to the number of modes
+        eigenmode_mu_estimates = eigenmode_mu_estimates[:, :n_modes]
+        eigenmode_std_estimates = eigenmode_std_estimates[:, :n_modes]
+
         # Prepare the predictions
         predictions_dict = {}
         predictions_dict["mu_estimate"] = eigenmode_mu_estimates @ encoded_query
@@ -3238,7 +3241,7 @@ class SpectralNormativeModel:
         corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
 
         # Estimate query variance for each sample
-        for sample_idx in range(test_covariates.shape[0]):
+        for sample_idx in range(eigenmode_mu_estimates.shape[0]):
             # Build sparse correlation matrix
             sparse_correlations = sparse.coo_matrix(
                 (
@@ -3272,71 +3275,61 @@ class SpectralNormativeModel:
         # Create a the predictions object
         return NormativePredictions(predictions=predictions_dict)
 
-    def predict(
+    def compute_spectral_predictions(
         self,
-        encoded_query: npt.NDArray[np.floating[Any]],
         test_covariates: pd.DataFrame,
         *,
-        extended: bool = False,
         model_params: dict[str, Any] | None = None,
-        encoded_test_data: npt.NDArray[np.floating[Any]] | None = None,
         n_modes: int | None = None,
         predict_without: list[str] | None = None,
-    ) -> NormativePredictions:
+    ) -> dict[str, npt.NDArray[np.floating[Any]]]:
         """
-        Predict normative moments (mean, std) for new data using the fitted spectral
-        normative model.
-        Spectral normative modeling can estimate the normative distribution of any
-        variable of interest defined as a spatial query encoded in the latent low-pass
-        graph spectral space.
+        Predict normative moments (mean, std) of the eigenmode basis for new data
+        using the fitted spectral normative model.
+
+        This function requires a dataframe of covariates (test_covariates) to compute
+        a set of spectral predictions that can subsequently be combined to efficiently
+        estimate normative predictions for any query(ies).
 
         Args:
-            encoded_query: np.ndarray
-                Encoded query data defining the normative variable of interest.
-                Can be provided as:
-                - shape = (n_modes) for a single query vector
-                - shape = (n_modes, n_queries) for multiple queries predicted at once
             test_covariates: pd.DataFrame
                 DataFrame containing the new covariate data to predict.
                 This must include all specified covariates.
                 Note: covariates listed in predict_without will be ignored and are
                 hence not required.
-            extended: bool (default: False)
-                If True, return additional stats such as log-likelihood, centiles, etc.
-                Note that extended predictions require encoded_test_data to be
-                provided in addition to the covariates.
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
-            encoded_test_data: np.ndarray | None
-                Optional encoded test data for the phenotype being modeled (only
-                required for extended predictions).
-                Expects a numpy array (n_samples, n_modes)
             n_modes: int | None
                 Optional number of modes to use for the prediction. If not provided,
-                the stored number of modes from model.fit() will be used.
+                the number of modes from model_params will be used.
             predict_without: list[str] | None
                 Optional list of covariate names to ignore during prediction.
                 This can be used to check the effect of removing certain covariates
                 from the model.
 
         Returns:
-            pd.DataFrame: DataFrame containing the predicted moments (mean, std) for
-                the variable of interest defined by the encoded query.
+            dict:
+                A dictionary containing:
+                - 'eigenmode_mu_estimates': np.ndarray (n_samples, n_modes)
+                - 'eigenmode_std_estimates': np.ndarray (n_samples, n_modes)
+                - 'rho_estimates': np.ndarray (n_samples, n_covariance_pairs)
         """
+        # Parameters
+        if model_params is None:
+            model_params = self.model_params
+
         # Find n_modes
         if n_modes is None:
-            n_modes = int(self.model_params["n_modes"])
+            n_modes = int(model_params["n_modes"])
 
         if self.base_model.spec is None:
             err = "The base model is not specified. Cannot predict new data."
             raise ValueError(err)
-        # Validate the new data
-        self._validate_fit_input(encoded_train_data=encoded_query, n_modes=n_modes)
 
-        # Parameters
-        if model_params is None:
-            model_params = self.model_params
+        # Validate the covariate data
+        validation_columns = [cov.name for cov in self.base_model.spec.covariates]
+        utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # direct normative predictions for each eigenmode
         eigenmode_mu_estimates, eigenmode_std_estimates = np.array(
@@ -3359,8 +3352,14 @@ class SpectralNormativeModel:
             variable_of_interest_2="dummy_VOI_2",  # Dummy variable of interest
         )
 
+        # Load sparse covariance structure
+        row_indices = model_params["sparse_covariance_structure"][:, 0]
+        col_indices = model_params["sparse_covariance_structure"][:, 1]
+        # Select indices that are both within n_modes
+        corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
+
         # cross-mode dependence structure
-        rho_estimates = np.array(
+        valid_rho_estimates = np.array(
             [
                 covariance_model.predict(
                     test_covariates,
@@ -3369,9 +3368,162 @@ class SpectralNormativeModel:
                 )
                 .to_array(["correlation_estimate"])
                 .T
-                for covariance_model_params in model_params["covariance_model_params"]
+                for i, covariance_model_params in enumerate(
+                    model_params["covariance_model_params"],
+                )
+                if corr_index_valid[i]
             ],
-        ).T[0]  # estimates have a shape of (n_samples, n_covariance_pairs)
+        ).T[0]  # estimates have a shape of (n_samples, n_valid_covariance_pairs)
+
+        # Now fill in the full set of rho estimates with NaNs for the invalid pairs
+        rho_estimates = np.full(
+            (
+                test_covariates.shape[0],
+                model_params["sparse_covariance_structure"].shape[0],
+            ),
+            np.nan,
+        )
+        rho_estimates[:, corr_index_valid] = valid_rho_estimates
+        # final estimates have a shape of (n_samples, n_covariance_pairs)
+
+        return {
+            "eigenmode_mu_estimates": eigenmode_mu_estimates,
+            "eigenmode_std_estimates": eigenmode_std_estimates,
+            "rho_estimates": rho_estimates,
+        }
+
+    def _validate_spectral_predictions(
+        self,
+        spectral_predictions: dict[str, npt.NDArray[np.floating[Any]]],
+    ) -> None:
+        """
+        Internal method to validate the spectral predictions dictionary.
+        """
+        required_keys = [
+            "eigenmode_mu_estimates",
+            "eigenmode_std_estimates",
+            "rho_estimates",
+        ]
+        if not all(key in spectral_predictions for key in required_keys):
+            err = (
+                "spectral_predictions must contain 'eigenmode_mu_estimates',"
+                " 'eigenmode_std_estimates', and 'rho_estimates'."
+            )
+            raise ValueError(err)
+
+    def predict(
+        self,
+        encoded_query: npt.NDArray[np.floating[Any]],
+        *,
+        spectral_predictions: dict[str, npt.NDArray[np.floating[Any]]] | None = None,
+        test_covariates: pd.DataFrame | None = None,
+        extended: bool = False,
+        model_params: dict[str, Any] | None = None,
+        encoded_test_data: npt.NDArray[np.floating[Any]] | None = None,
+        n_modes: int | None = None,
+        predict_without: list[str] | None = None,
+    ) -> NormativePredictions:
+        """
+        Predict normative moments (mean, std) for new data using the fitted spectral
+        normative model.
+        Spectral normative modeling can estimate the normative distribution of any
+        variable of interest defined as a spatial query encoded in the latent low-pass
+        graph spectral space.
+
+        As such, the predict method requires:
+            - The encoded query(ies) defining the variable(s) of interest.
+
+        In addition, the method requires either:
+            - A dataframe of covariates (test_covariates) to be used for prediction
+              of a set of spectral predictions that will subsequently be combined to
+              apply the normative predictions for the encoded query(ies).
+            OR
+            - A dictionary of precomputed spectral predictions (spectral_predictions)
+              to be used for efficient normative predictions of the encoded query(ies).
+
+        The precomputed spectral predictions can be obtained using the
+        'compute_spectral_predictions' function. This is particularly useful when
+        predicting multiple queries or when the same covariate set is used for
+        multiple predictions, as it avoids redundant computations.
+
+        Args:
+            encoded_query: np.ndarray
+                Encoded query data defining the normative variable of interest.
+                Can be provided as:
+                - shape = (n_modes) for a single query vector
+                - shape = (n_modes, n_queries) for multiple queries predicted at once
+            spectral_predictions: dict | None
+                Optional dictionary of precomputed spectral predictions to use for
+                the prediction. If not provided, test_covariates must be provided
+                instead to compute the spectral predictions.
+                The dictionary should contain:
+                - 'eigenmode_mu_estimates': np.ndarray (n_samples, n_modes)
+                - 'eigenmode_std_estimates': np.ndarray (n_samples, n_modes)
+                - 'rho_estimates': np.ndarray (n_samples, n_covariance_pairs)
+                This can be obtained using the 'compute_spectral_predictions' method.
+            test_covariates: pd.DataFrame | None
+                DataFrame containing the new covariate data to predict.
+                This must include all specified covariates.
+                Note: covariates listed in predict_without will be ignored and are
+                hence not required.
+            extended: bool (default: False)
+                If True, return additional stats such as log-likelihood, centiles, etc.
+                Note that extended predictions require encoded_test_data to be
+                provided in addition to the covariates.
+            model_params: dict | None
+                Optional dictionary of model parameters to use. If not provided,
+                the stored parameters from model.fit() will be used.
+            encoded_test_data: np.ndarray | None
+                Optional encoded test data for the phenotype being modeled (only
+                required for extended predictions).
+                Expects a numpy array (n_samples, n_modes)
+            n_modes: int | None
+                Optional number of modes to use for the prediction. If not provided,
+                the number of modes from model_params will be used.
+            predict_without: list[str] | None
+                Optional list of covariate names to ignore during prediction.
+                This can be used to check the effect of removing certain covariates
+                from the model.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the predicted moments (mean, std) for
+                the variable of interest defined by the encoded query.
+        """
+        # Parameters
+        if model_params is None:
+            model_params = self.model_params
+
+        # Find n_modes
+        if n_modes is None:
+            n_modes = int(model_params["n_modes"])
+
+        if self.base_model.spec is None:
+            err = "The base model is not specified. Cannot predict new data."
+            raise ValueError(err)
+
+        if spectral_predictions is None:
+            if test_covariates is None:
+                err = "Either test_covariates or spectral_predictions must be provided."
+                raise ValueError(err)
+
+            # Compute spectral predictions if not provided
+            spectral_predictions = self.compute_spectral_predictions(
+                test_covariates=test_covariates,
+                model_params=model_params,
+                n_modes=n_modes,
+                predict_without=predict_without,
+            )
+        elif test_covariates is not None:
+            logger.warning(
+                "Both test_covariates and spectral_predictions are provided."
+                " Ignoring test_covariates and using spectral_predictions.",
+            )
+
+        # Unpack spectral predictions
+        self._validate_spectral_predictions(spectral_predictions)
+        eigenmode_mu_estimates = spectral_predictions["eigenmode_mu_estimates"]
+        eigenmode_std_estimates = spectral_predictions["eigenmode_std_estimates"]
+        rho_estimates = spectral_predictions["rho_estimates"]
 
         # reformat encoded queries
         encoded_query = np.asarray(encoded_query[:n_modes]).reshape(n_modes, -1)
@@ -3382,7 +3534,6 @@ class SpectralNormativeModel:
             eigenmode_mu_estimates=eigenmode_mu_estimates,
             eigenmode_std_estimates=eigenmode_std_estimates,
             rho_estimates=rho_estimates,
-            test_covariates=test_covariates,
             model_params=model_params,
             n_modes=n_modes,
         )
