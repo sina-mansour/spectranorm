@@ -41,7 +41,7 @@ include = [
 
 [tool.poetry.dependencies]
 python = ">=3.10, <3.14"
-numpy = ">=1.25"
+numpy = ">=1.25, <2.0"
 scipy = ">=1.15"
 pandas = ">=2.2"
 arviz = ">=0.21"
