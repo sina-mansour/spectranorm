@@ -2962,6 +2962,10 @@ class SpectralNormativeModel:
         if save_directory is not None:
             save_directory = Path(save_directory)
 
+        # Evaluate the number of modes to fit
+        if n_modes == -1:
+            n_modes = self.eigenmode_basis.n_modes
+
         # Fit the base direct model for each eigenmode using parallel processing
         tasks = (
             joblib.delayed(self.fit_single_direct)(
@@ -3275,12 +3279,157 @@ class SpectralNormativeModel:
         # Create a the predictions object
         return NormativePredictions(predictions=predictions_dict)
 
+    def _predict_single_mode_estimates(
+        self,
+        direct_model: DirectNormativeModel,
+        test_covariates: pd.DataFrame,
+        model_params: dict[str, Any],
+        predict_without: list[str] | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Internal method to predict single mode estimates for new data using the fitted
+        spectral normative model.
+        """
+        return (
+            direct_model.predict(
+                test_covariates,
+                model_params=model_params,
+                predict_without=predict_without,
+            )
+            .to_array(["mu_estimate", "std_estimate"])
+            .T
+        )
+
+    def _predict_all_direct_estimates(
+        self,
+        test_covariates: pd.DataFrame,
+        model_params: dict[str, Any],
+        n_modes: int,
+        n_jobs: int = -1,
+        predict_without: list[str] | None = None,
+    ) -> tuple[
+        npt.NDArray[np.floating[Any]],
+        npt.NDArray[np.floating[Any]],
+    ]:
+        """
+        Internal method to predict all direct estimates for new data using the fitted
+        spectral normative model.
+        """
+        # direct normative predictions for each eigenmode
+        tasks = [
+            joblib.delayed(self._predict_single_mode_estimates)(
+                self.base_model,
+                test_covariates,
+                model_params=direct_model_params,
+                predict_without=predict_without,
+            )
+            for direct_model_params in model_params["direct_model_params"][:n_modes]
+        ]
+
+        results = list(
+            utils.parallel.ParallelTqdm(
+                n_jobs=n_jobs,
+                total_tasks=n_modes,
+                desc="Computing direct eigenmode estimates",
+            )(tasks),  # pyright: ignore[reportCallIssue]
+        )
+
+        # Unpack results, estimates have a shape of (n_samples, n_modes)
+        eigenmode_mu_estimates, eigenmode_std_estimates = np.array(results).T
+
+        return eigenmode_mu_estimates, eigenmode_std_estimates
+
+    def _predict_single_covariance_estimates(
+        self,
+        covariance_model: CovarianceNormativeModel,
+        test_covariates: pd.DataFrame,
+        model_params: dict[str, Any],
+        predict_without: list[str] | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Internal method to predict single covariance estimates for new data using the
+        fitted spectral normative model.
+        """
+        return (
+            covariance_model.predict(
+                test_covariates,
+                model_params=model_params,
+                predict_without=predict_without,
+            )
+            .to_array(["correlation_estimate"])
+            .T
+        )
+
+    def _predict_all_covariance_estimates(
+        self,
+        test_covariates: pd.DataFrame,
+        model_params: dict[str, Any],
+        n_modes: int,
+        n_jobs: int = -1,
+        predict_without: list[str] | None = None,
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Internal method to predict all covariance estimates for new data using the
+        fitted spectral normative model.
+        """
+        # create a dummy covariance model
+        covariance_model = CovarianceNormativeModel.from_direct_model(
+            self.base_model,
+            variable_of_interest_1="dummy_VOI_1",  # Dummy variable of interest
+            variable_of_interest_2="dummy_VOI_2",  # Dummy variable of interest
+        )
+
+        # Check sparse covariance structure
+        row_indices = model_params["sparse_covariance_structure"][:, 0]
+        col_indices = model_params["sparse_covariance_structure"][:, 1]
+        # Select indices that are within n_modes
+        corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
+
+        # cross-mode dependence structure for valid pairs
+        tasks = [
+            joblib.delayed(self._predict_single_covariance_estimates)(
+                covariance_model,
+                test_covariates,
+                model_params=covariance_model_params,
+                predict_without=predict_without,
+            )
+            for i, covariance_model_params in enumerate(
+                model_params["covariance_model_params"],
+            )
+            if corr_index_valid[i]
+        ]
+
+        results = list(
+            utils.parallel.ParallelTqdm(
+                n_jobs=n_jobs,
+                total_tasks=len(tasks),
+                desc="Computing cross-mode dependence estimates",
+            )(tasks),  # pyright: ignore[reportCallIssue]
+        )
+
+        # Unpack results, (n_samples, n_valid_covariance_pairs)
+        valid_rho_estimates = np.array(results).T[0]
+
+        # Now fill in the full set of rho estimates with NaNs for the invalid pairs
+        rho_estimates = np.full(
+            (
+                test_covariates.shape[0],
+                model_params["sparse_covariance_structure"].shape[0],
+            ),
+            np.nan,
+        )
+        rho_estimates[:, corr_index_valid] = valid_rho_estimates
+        # final estimates have a shape of (n_samples, n_covariance_pairs)
+
+        return rho_estimates
+
     def compute_spectral_predictions(
         self,
         test_covariates: pd.DataFrame,
         *,
         model_params: dict[str, Any] | None = None,
         n_modes: int | None = None,
+        n_jobs: int = -1,
         predict_without: list[str] | None = None,
     ) -> dict[str, npt.NDArray[np.floating[Any]]]:
         """
@@ -3303,6 +3452,9 @@ class SpectralNormativeModel:
             n_modes: int | None
                 Optional number of modes to use for the prediction. If not provided,
                 the number of modes from model_params will be used.
+            n_jobs: int (default=-1)
+                Number of parallel jobs to utilize. If -1, all available CPU cores are
+                used. If 1, no parallelization is used.
             predict_without: list[str] | None
                 Optional list of covariate names to ignore during prediction.
                 This can be used to check the effect of removing certain covariates
@@ -3332,59 +3484,25 @@ class SpectralNormativeModel:
         utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # direct normative predictions for each eigenmode
-        eigenmode_mu_estimates, eigenmode_std_estimates = np.array(
-            [
-                self.base_model.predict(
-                    test_covariates,
-                    model_params=direct_model_params,
-                    predict_without=predict_without,
-                )
-                .to_array(["mu_estimate", "std_estimate"])
-                .T
-                for direct_model_params in model_params["direct_model_params"][:n_modes]
-            ],
-        ).T  # estimates have a shape of (n_samples, n_modes)
-
-        # create a dummy covariance model
-        covariance_model = CovarianceNormativeModel.from_direct_model(
-            self.base_model,
-            variable_of_interest_1="dummy_VOI_1",  # Dummy variable of interest
-            variable_of_interest_2="dummy_VOI_2",  # Dummy variable of interest
-        )
-
-        # Load sparse covariance structure
-        row_indices = model_params["sparse_covariance_structure"][:, 0]
-        col_indices = model_params["sparse_covariance_structure"][:, 1]
-        # Select indices that are both within n_modes
-        corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
+        (
+            eigenmode_mu_estimates,
+            eigenmode_std_estimates,
+        ) = self._predict_all_direct_estimates(
+            test_covariates,
+            model_params,
+            n_modes,
+            n_jobs=n_jobs,
+            predict_without=predict_without,
+        )  # estimates have a shape of (n_samples, n_modes)
 
         # cross-mode dependence structure
-        valid_rho_estimates = np.array(
-            [
-                covariance_model.predict(
-                    test_covariates,
-                    model_params=covariance_model_params,
-                    predict_without=predict_without,
-                )
-                .to_array(["correlation_estimate"])
-                .T
-                for i, covariance_model_params in enumerate(
-                    model_params["covariance_model_params"],
-                )
-                if corr_index_valid[i]
-            ],
-        ).T[0]  # estimates have a shape of (n_samples, n_valid_covariance_pairs)
-
-        # Now fill in the full set of rho estimates with NaNs for the invalid pairs
-        rho_estimates = np.full(
-            (
-                test_covariates.shape[0],
-                model_params["sparse_covariance_structure"].shape[0],
-            ),
-            np.nan,
-        )
-        rho_estimates[:, corr_index_valid] = valid_rho_estimates
-        # final estimates have a shape of (n_samples, n_covariance_pairs)
+        rho_estimates = self._predict_all_covariance_estimates(
+            test_covariates,
+            model_params,
+            n_modes,
+            n_jobs=n_jobs,
+            predict_without=predict_without,
+        )  # estimates have a shape of (n_samples, n_covariance_pairs)
 
         return {
             "eigenmode_mu_estimates": eigenmode_mu_estimates,
