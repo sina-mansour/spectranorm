@@ -119,6 +119,7 @@ class NormativePredictions:
         train_mean: npt.NDArray[np.floating[Any]],
         train_std: npt.NDArray[np.floating[Any]],
         n_params: int,
+        msll_censored_quantile: float = 0.01,
     ) -> NormativePredictions:
         """
         Evaluate the predictions against the observed variable of interest.
@@ -144,6 +145,8 @@ class NormativePredictions:
                 data.
             n_params: int
                 Number of free parameters in the model.
+            msll_censored_quantile: float (default=0.02)
+                Quantile below which log-likelihoods are censored for MSLL.
 
         Returns:
             NormativePredictions
@@ -187,6 +190,7 @@ class NormativePredictions:
                 self.predictions["variable_of_interest"],
                 train_mean,
                 train_std,
+                censored_quantile=msll_censored_quantile,
             ),
         )
         # Bayesian Information Criterion (BIC)
@@ -2745,7 +2749,7 @@ class SpectralNormativeModel:
         )
 
         # Now compute the sparsity structure based on the resulting matrix
-        alpha = 0.05  # Significance level for corrected p-values
+        alpha = 0.1  # Significance level for corrected p-values
         rows, cols = np.where(corrected_p_values < alpha)
 
         # Remove redundant and duplicate pairs
@@ -3215,6 +3219,43 @@ class SpectralNormativeModel:
         if save_directory is not None:
             self.save_model(save_directory)
 
+    @staticmethod
+    def _compute_single_std_estimate_from_spectral_estimates(
+        encoded_query: npt.NDArray[np.floating[Any]],
+        eigenmode_std_estimates: npt.NDArray[np.floating[Any]],
+        rho_estimates: npt.NDArray[np.floating[Any]],
+        row_indices: npt.NDArray[np.integer[Any]],
+        col_indices: npt.NDArray[np.integer[Any]],
+    ) -> npt.NDArray[np.floating[Any]]:
+        """
+        Internal method to compute a standard deviation estimate for a single sample.
+        """
+        # Build sparse correlation matrix
+        sparse_correlations = sparse.coo_matrix(
+            (
+                rho_estimates,  # sparse data values
+                (row_indices, col_indices),  # row, column indices
+            ),
+            shape=(eigenmode_std_estimates.shape[0], eigenmode_std_estimates.shape[0]),
+        ).tocsr()
+        # Make it symmetric
+        sparse_correlations = sparse_correlations + sparse_correlations.T
+        # Set diagonal to 1
+        sparse_correlations.setdiag(np.array(1))
+        # Weight mode stds by encoding
+        weighted_mode_stds = (
+            np.asarray(eigenmode_std_estimates).reshape(-1, 1) * encoded_query
+        )
+        # Compute the variance estimate
+        return np.asarray(
+            np.sqrt(
+                np.sum(
+                    weighted_mode_stds * (sparse_correlations @ weighted_mode_stds),
+                    axis=0,
+                ),
+            ),
+        )
+
     def _predict_from_spectral_estimates(
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
@@ -3235,8 +3276,6 @@ class SpectralNormativeModel:
         # Prepare the predictions
         predictions_dict = {}
         predictions_dict["mu_estimate"] = eigenmode_mu_estimates @ encoded_query
-        # empty initialization of std estimates
-        predictions_dict["std_estimate"] = predictions_dict["mu_estimate"] * np.nan
 
         # Load sparse covariance structure
         row_indices = model_params["sparse_covariance_structure"][:, 0]
@@ -3245,43 +3284,32 @@ class SpectralNormativeModel:
         corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
 
         # Estimate query variance for each sample
-        for sample_idx in range(eigenmode_mu_estimates.shape[0]):
-            # Build sparse correlation matrix
-            sparse_correlations = sparse.coo_matrix(
-                (
-                    rho_estimates[sample_idx, corr_index_valid],  # sparse data values
-                    (  # row, column indices
-                        row_indices[corr_index_valid],
-                        col_indices[corr_index_valid],
-                    ),
-                ),
-                shape=(n_modes, n_modes),
-            ).tocsr()
-            # Make it symmetric
-            sparse_correlations = sparse_correlations + sparse_correlations.T
-            # Set diagonal to 1
-            sparse_correlations.setdiag(np.array(1))
-            # Weight mode stds by encoding
-            weighted_mode_stds = (
-                np.asarray(
-                    eigenmode_std_estimates[sample_idx],
-                ).reshape(-1, 1)
-                * encoded_query
+        tasks = (
+            joblib.delayed(self._compute_single_std_estimate_from_spectral_estimates)(
+                encoded_query,
+                eigenmode_std_estimates[sample_idx],
+                rho_estimates[sample_idx, corr_index_valid],
+                row_indices[corr_index_valid],
+                col_indices[corr_index_valid],
             )
-            # Compute the variance estimate
-            predictions_dict["std_estimate"][sample_idx] = np.sqrt(
-                np.sum(
-                    weighted_mode_stds * (sparse_correlations @ weighted_mode_stds),
-                    axis=0,
-                ),
-            )
+            for sample_idx in range(eigenmode_mu_estimates.shape[0])
+        )
+        results = list(
+            utils.parallel.ParallelTqdm(
+                n_jobs=-1,
+                total_tasks=eigenmode_mu_estimates.shape[0],
+                desc="Computing std estimates",
+            )(tasks),  # pyright: ignore[reportCallIssue]
+        )
+        predictions_dict["std_estimate"] = np.array(results)
 
         # Create a the predictions object
         return NormativePredictions(predictions=predictions_dict)
 
+    @staticmethod
     def _predict_single_mode_estimates(
-        self,
-        direct_model: DirectNormativeModel,
+        direct_model_spec: NormativeModelSpec,
+        direct_model_defaults: dict[str, Any],
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
         predict_without: list[str] | None = None,
@@ -3290,6 +3318,16 @@ class SpectralNormativeModel:
         Internal method to predict single mode estimates for new data using the fitted
         spectral normative model.
         """
+        # Instantiate a direct normative model from the base model
+        direct_model = DirectNormativeModel(
+            spec=NormativeModelSpec(
+                variable_of_interest="VOI",  # Use the added VOI column
+                covariates=direct_model_spec.covariates,
+                influencing_mean=direct_model_spec.influencing_mean,
+                influencing_variance=direct_model_spec.influencing_variance,
+            ),
+            defaults=direct_model_defaults,
+        )
         return (
             direct_model.predict(
                 test_covariates,
@@ -3300,7 +3338,7 @@ class SpectralNormativeModel:
             .T
         )
 
-    def _predict_all_direct_estimates(
+    def _predict_all_mode_estimates(
         self,
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
@@ -3316,15 +3354,16 @@ class SpectralNormativeModel:
         spectral normative model.
         """
         # direct normative predictions for each eigenmode
-        tasks = [
+        tasks = (
             joblib.delayed(self._predict_single_mode_estimates)(
-                self.base_model,
+                self.base_model.spec,
+                self.base_model.defaults,
                 test_covariates,
                 model_params=direct_model_params,
                 predict_without=predict_without,
             )
             for direct_model_params in model_params["direct_model_params"][:n_modes]
-        ]
+        )
 
         results = list(
             utils.parallel.ParallelTqdm(
@@ -3339,9 +3378,10 @@ class SpectralNormativeModel:
 
         return eigenmode_mu_estimates, eigenmode_std_estimates
 
+    @staticmethod
     def _predict_single_covariance_estimates(
-        self,
-        covariance_model: CovarianceNormativeModel,
+        covariance_model_spec: CovarianceModelSpec,
+        covariance_model_defaults: dict[str, Any],
         test_covariates: pd.DataFrame,
         model_params: dict[str, Any],
         predict_without: list[str] | None = None,
@@ -3350,6 +3390,16 @@ class SpectralNormativeModel:
         Internal method to predict single covariance estimates for new data using the
         fitted spectral normative model.
         """
+        # create a dummy covariance model
+        covariance_model = CovarianceNormativeModel(
+            spec=CovarianceModelSpec(
+                variable_of_interest_1="VOI_1",
+                variable_of_interest_2="VOI_2",
+                covariates=covariance_model_spec.covariates,
+                influencing_covariance=covariance_model_spec.influencing_covariance,
+            ),
+            defaults=covariance_model_defaults,
+        )
         return (
             covariance_model.predict(
                 test_covariates,
@@ -3386,9 +3436,10 @@ class SpectralNormativeModel:
         corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
 
         # cross-mode dependence structure for valid pairs
-        tasks = [
+        tasks = (
             joblib.delayed(self._predict_single_covariance_estimates)(
-                covariance_model,
+                covariance_model.spec,
+                covariance_model.defaults,
                 test_covariates,
                 model_params=covariance_model_params,
                 predict_without=predict_without,
@@ -3397,12 +3448,12 @@ class SpectralNormativeModel:
                 model_params["covariance_model_params"],
             )
             if corr_index_valid[i]
-        ]
+        )
 
         results = list(
             utils.parallel.ParallelTqdm(
                 n_jobs=n_jobs,
-                total_tasks=len(tasks),
+                total_tasks=np.sum(corr_index_valid),
                 desc="Computing cross-mode dependence estimates",
             )(tasks),  # pyright: ignore[reportCallIssue]
         )
@@ -3487,7 +3538,7 @@ class SpectralNormativeModel:
         (
             eigenmode_mu_estimates,
             eigenmode_std_estimates,
-        ) = self._predict_all_direct_estimates(
+        ) = self._predict_all_mode_estimates(
             test_covariates,
             model_params,
             n_modes,
