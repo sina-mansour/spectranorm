@@ -2717,7 +2717,7 @@ class SpectralNormativeModel:
     def identify_sparse_covariance_structure(
         self,
         data: npt.NDArray[np.floating[Any]],
-        correlation_threshold: float,
+        sparsity_threshold: float = 1,
     ) -> npt.NDArray[np.integer[Any]]:
         """
         Identify the sparse cross-basis covariance structure in the phenotype.
@@ -2732,9 +2732,11 @@ class SpectralNormativeModel:
             data: np.ndarray
                 The encoded training data representing the phenotype in the graph
                 frequency domain.
-            correlation_threshold: float
-                The threshold to include covariance pairs if significantly correlated.
-                Should be between 0 and 1.
+            sparsity_threshold: float
+                Number of strongest correlations to keep (proportional to the number
+                of modes). Defaults to 1, meaning that the number of sparse covariance
+                pairs will be equal to the number of modes. If set to a lower value,
+                fewer covariance pairs will be retained.
 
         Returns:
             np.ndarray:
@@ -2742,15 +2744,34 @@ class SpectralNormativeModel:
                 identified sparse covariance structure.
         """
         # Start with correlation structure across the whole sample
-        corrected_p_values = utils.stats.compute_correlation_significance(
-            np.corrcoef(data.T),
-            n_samples=data.shape[0],
-            correlation_threshold=correlation_threshold,
+        correlations = np.corrcoef(data.T)
+
+        # Remove self-correlations
+        np.fill_diagonal(correlations, 0)
+
+        # Extract the upper triangle of the correlation matrix
+        upper_triangle_indices = np.triu_indices(correlations.shape[0], k=1)
+
+        # Determine the number of correlations to keep
+        n_correlations_to_keep = int(
+            sparsity_threshold * correlations.shape[0],
         )
 
+        # Find the cutoff value for the top correlations
+        if n_correlations_to_keep < len(upper_triangle_indices[0]):
+            cutoff_value = np.partition(
+                np.abs(correlations[upper_triangle_indices]),
+                -n_correlations_to_keep,
+            )[-n_correlations_to_keep]
+        else:
+            cutoff_value = 0
+            # Warn the user if they are keeping all correlations
+            logger.warning(
+                "Sparsity threshold is high, keeping all correlations.",
+            )
+
         # Now compute the sparsity structure based on the resulting matrix
-        alpha = 0.1  # Significance level for corrected p-values
-        rows, cols = np.where(corrected_p_values < alpha)
+        rows, cols = np.where(np.abs(correlations) > cutoff_value)
 
         # Remove redundant and duplicate pairs
         rows_lim = rows[rows < cols]
@@ -3079,7 +3100,7 @@ class SpectralNormativeModel:
         n_jobs: int = -1,
         save_directory: Path | None = None,
         save_separate: bool = False,
-        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.1,
+        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.5,
     ) -> None:
         """
         Fit the spectral normative model to the provided encoded training data.
@@ -3111,8 +3132,10 @@ class SpectralNormativeModel:
                 (2, n_pairs) array of row and column indices are provided, the model
                 will use this structure. If float, the model will estimate the
                 covariance structure based on the training data and the float value
-                will be used as the threshold to exclude small correlations to form a
-                sparse covariance structure.
+                will be used as the sparsity threshold for the number of covariance
+                pairs to keep proportional to the number of modes. Defaults to 0.5,
+                meaning that the number of modeled sparse covariance pairs will be
+                half the number of modes.
         """
         logger.info("Starting SNM model fitting:")
         # Evaluate the number of modes to fit
@@ -3531,7 +3554,11 @@ class SpectralNormativeModel:
             raise ValueError(err)
 
         # Validate the covariate data
-        validation_columns = [cov.name for cov in self.base_model.spec.covariates]
+        validation_columns = [
+            cov.name
+            for cov in self.base_model.spec.covariates
+            if cov.name not in (predict_without or [])
+        ]
         utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # direct normative predictions for each eigenmode
