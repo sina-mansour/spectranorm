@@ -13,6 +13,7 @@ https://sina-mansour.github.io/spectranorm
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -31,7 +32,8 @@ from . import utils
 
 if TYPE_CHECKING:
     import numpy.typing as npt
-    from pytensor.tensor.variable import TensorVariable
+
+    TensorVariable = Any  # mypy-safe stand-in for PyTensor objects
 
 __all__ = ["utils"]
 
@@ -53,7 +55,6 @@ DEFAULT_ADVI_CONVERGENCE_TOLERANCE: float = 1e-3
 DEFAULT_RANDOM_SEED: int = 12345
 DEFAULT_ADAM_LEARNING_RATE: float = 0.1
 DEFAULT_ADAM_LEARNING_RATE_DECAY: float = 0.9995
-DEFAULT_COVARIANCE_AUGMENTATION_MULTIPLICITY: int = 1
 
 # Set up logging
 logger = utils.general.get_logger(__name__)
@@ -118,7 +119,7 @@ class NormativePredictions:
         variable_of_interest: npt.NDArray[np.floating[Any]],
         train_mean: npt.NDArray[np.floating[Any]],
         train_std: npt.NDArray[np.floating[Any]],
-        n_params: int,
+        n_params: int | None = None,
         msll_censored_quantile: float = 0.01,
     ) -> NormativePredictions:
         """
@@ -133,7 +134,6 @@ class NormativePredictions:
             - R-squared
             - Explained Variance Score
             - Mean Standardized Log Loss (MSLL)
-            - Bayesian Information Criterion (BIC)
 
         Args:
             variable_of_interest: np.ndarray
@@ -193,12 +193,7 @@ class NormativePredictions:
                 censored_quantile=msll_censored_quantile,
             ),
         )
-        # Bayesian Information Criterion (BIC)
-        self.evaluations["BIC"] = utils.metrics.compute_bic(
-            model_log_likelihoods=self.predictions["log-likelihood"],
-            n_params=n_params,
-            n_samples=self.predictions["variable_of_interest"].shape[0],
-        )
+        _ = n_params  # keep for future use (e.g. information criteria calculations)
 
         return self
 
@@ -564,6 +559,38 @@ class CovariateSpec:
         }
         # Factorize the values using the mapping
         return np.array([category_mapping[val] for val in values], dtype=int)
+
+    def extend_categories(
+        self,
+        new_categories: npt.NDArray[np.str_],
+    ) -> None:
+        """
+        Extend the categories of a categorical covariate with new categories.
+
+        Args:
+            new_categories (np.ndarray): The new categories to add.
+
+        Returns:
+            None
+        """
+        if self.cov_type != "categorical":
+            err = f"Covariate '{self.name}' is not a categorical covariate to extend."
+            raise ValueError(err)
+        if self.categories is None:  # to satisfy type checker
+            err = f"Covariate '{self.name}' does not have categories defined."
+            raise ValueError(err)
+
+        # Make sure categories are unique and new
+        unique_new_categories = np.setdiff1d(new_categories, self.categories)
+        if unique_new_categories.size < new_categories.size:
+            err = (
+                f"Some new categories are already present in the "
+                f"covariate '{self.name}'."
+            )
+            raise ValueError(err)
+
+        # Extend the categories array
+        self.categories = np.concatenate((self.categories, unique_new_categories))
 
 
 @dataclass
@@ -1002,35 +1029,52 @@ class DirectNormativeModel:
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         sigma_prior: float = 10,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a linear effect for a numerical covariate on the mean estimate.
         """
         # Linear effect
-        linear_beta = pm.Normal(
-            f"linear_beta_{cov.name}",
-            mu=0,
-            sigma=sigma_prior,
-            size=1,
-            dims=(f"{cov.name}_linear",),
-        )
+        if adapt is None:  # Model fitting
+            linear_beta = pm.Normal(
+                f"linear_beta_{cov.name}",
+                mu=0,
+                sigma=sigma_prior,
+                size=1,
+                dims=(f"{cov.name}_linear",),
+            )
+            # Increment parameter count for linear effect
+            self.model_params["n_params"] += 1
+        else:  # Freeze during adaptation/fine-tuning
+            linear_beta = pm.Deterministic(
+                f"linear_beta_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"linear_beta_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_linear",),
+            )
         if cov.moments is not None:  # to satisfy type checker
             effects_list.append(
-                ((train_data[cov.name].to_numpy() - cov.moments[0]) / cov.moments[1])
+                (
+                    cast("npt.NDArray[Any]", train_data[cov.name].to_numpy())
+                    - cov.moments[0]
+                )
+                / cov.moments[1]
                 * linear_beta,
             )
-        # Increment parameter count for linear effect
-        self.model_params["n_params"] += 1
 
     def _model_spline_mean_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 10,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a spline effect for a numerical covariate on the mean estimate.
@@ -1038,28 +1082,42 @@ class DirectNormativeModel:
         # Spline effect
         spline_bases[cov.name] = spline_bases.get(
             cov.name,
-            cov.make_spline_bases(train_data[cov.name].to_numpy()),
+            cov.make_spline_bases(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        spline_betas = pm.ZeroSumNormal(
-            f"spline_betas_{cov.name}",
-            sigma=sigma_prior,
-            shape=spline_bases[cov.name].shape[1],
-            dims=(f"{cov.name}_splines",),
-        )
-        # Note ZeroSumNormal imposes a centering constraint (ensuring identifiability)
-        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))  # type: ignore[no-untyped-call]
-        # Increment parameter count for spline effects
-        if cov.spline_spec is not None:  # to satisfy type checker
-            self.model_params["n_params"] += cov.spline_spec.df - 1
+        if adapt is None:  # Model fitting
+            # ZeroSumNormal imposes a centering constraint ensuring identifiability
+            spline_betas = pm.ZeroSumNormal(
+                f"spline_betas_{cov.name}",
+                sigma=sigma_prior,
+                shape=spline_bases[cov.name].shape[1],
+                dims=(f"{cov.name}_splines",),
+            )
+            # Increment parameter count for spline effects
+            if cov.spline_spec is not None:  # to satisfy type checker
+                self.model_params["n_params"] += cov.spline_spec.df - 1
+        else:  # Freeze during adaptation/fine-tuning
+            spline_betas = pm.Deterministic(
+                f"spline_betas_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"spline_betas_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_splines",),
+            )
+        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))
 
     def _model_categorical_mean_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 10,
         hierarchical_sigma_prior: float = 1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model the effect of a categorical covariate on the mean estimate.
@@ -1067,73 +1125,217 @@ class DirectNormativeModel:
         # Factorize categories
         category_indices[cov.name] = category_indices.get(
             cov.name,
-            cov.factorize_categories(train_data[cov.name].to_numpy()),
+            cov.factorize_categories(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        if cov.hierarchical:
-            # Hierarchical categorical effect
-            # Hyperpriors for category (Bayesian equivalent of random effects)
-            sigma_intercept_category = pm.HalfNormal(
-                f"sigma_intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=("scalar",),
-            )
+        if adapt is None:  # Model fitting
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.HalfNormal(
+                    f"sigma_intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=("scalar",),
+                )
 
-            # Hierarchical intercepts for each category (using reparameterized form)
-            categorical_intercept_offset = pm.ZeroSumNormal(
-                f"intercept_offset_{cov.name}",
-                sigma=hierarchical_sigma_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
-            categorical_intercept = pm.Deterministic(
-                f"intercept_{cov.name}",
-                (
-                    categorical_intercept_offset
-                    * pt.reshape(sigma_intercept_category, (1,))  # type: ignore[attr-defined]
-                ),
-                dims=(cov.name,),
-            )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.ZeroSumNormal(
+                    f"intercept_offset_{cov.name}",
+                    sigma=hierarchical_sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
 
-            # Increment parameter count for hierarchical intercept
-            self.model_params["n_params"] += 1
+                # Increment parameter count for hierarchical intercept
+                self.model_params["n_params"] += 1
 
-        else:
-            # Non-hierarchical (linear) categorical effect
-            categorical_intercept = pm.ZeroSumNormal(
-                f"intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
+            else:
+                # Non-hierarchical (linear) categorical effect
+                categorical_intercept = pm.ZeroSumNormal(
+                    f"intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+            # Increment parameter count for categorical effects
+            if cov.categories is not None:  # to satisfy type checker
+                self.model_params["n_params"] += len(cov.categories) - 1
+        elif cov.name != adapt["covariate_to_adapt"]:
+            # Freeze during adaptation/fine-tuning
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.Deterministic(
+                    f"sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_offset_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+        else:  # Partial freezing (fit parameters for the new site only)
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                # Hyperpriors are fixed during adaptation
+                sigma_intercept_category = pm.Deterministic(
+                    f"sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_offset_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                pretrain_sigma_prior = adapt["pretrained_model_params"][
+                    "posterior_means"
+                ][f"variance_intercept_offset_{cov.name}"].std()
+                new_categorical_intercept_offset = pm.Normal(
+                    f"intercept_offset_{cov.name}_adapt",
+                    mu=0,
+                    sigma=pretrain_sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new offsets
+                categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept_offset,
+                            new_categorical_intercept_offset,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                # Non-hierarchical (linear) categorical effect
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                new_categorical_intercept = pm.Normal(
+                    f"intercept_{cov.name}_adapt",
+                    mu=0,
+                    sigma=sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new offsets
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept,
+                            new_categorical_intercept,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+            self.model_params["n_params"] += new_category_count
         effects_list.append(
             categorical_intercept[category_indices[cov.name]],
         )
-        # Increment parameter count for categorical effects
-        if cov.categories is not None:  # to satisfy type checker
-            self.model_params["n_params"] += len(cov.categories) - 1
 
     def _model_all_mean_effects(
         self,
         train_data: pd.DataFrame,
         spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         category_indices: dict[str, npt.NDArray[np.integer[Any]]],
-    ) -> list[TensorVariable[Any, Any]]:
+        adapt: dict[str, Any] | None = None,
+    ) -> list[TensorVariable]:
         """
         Model all covariate mean effects.
         """
         mean_effects = []
         # Model the global intercept
-        global_intercept = pm.Normal(
-            "global_intercept",
-            mu=0,
-            sigma=5,
-            dims=("scalar",),
-        )
+        if adapt is None:  # Model fitting
+            global_intercept = pm.Normal(
+                "global_intercept",
+                mu=0,
+                sigma=5,
+                dims=("scalar",),
+            )
+            # Increment parameter count for global intercept
+            self.model_params["n_params"] += 1
+        else:  # Freeze during adaptation/fine-tuning
+            global_intercept = pm.Deterministic(
+                "global_intercept",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        "global_intercept"
+                    ],
+                ),
+                dims=("scalar",),
+            )
         mean_effects.append(global_intercept)
-        # Increment parameter count for global intercept
-        self.model_params["n_params"] += 1
         # Model additional covariate effects on the mean
         for cov in self.spec.covariates:
             if cov.name in self.spec.influencing_mean:
@@ -1144,6 +1346,7 @@ class DirectNormativeModel:
                             cov,
                             mean_effects,
                             sigma_prior=5,
+                            adapt=adapt,
                         )
                     elif cov.effect == "spline":
                         self._model_spline_mean_effect(
@@ -1152,6 +1355,7 @@ class DirectNormativeModel:
                             mean_effects,
                             spline_bases,
                             sigma_prior=5,
+                            adapt=adapt,
                         )
                 elif cov.cov_type == "categorical":
                     self._model_categorical_mean_effect(
@@ -1161,6 +1365,7 @@ class DirectNormativeModel:
                         category_indices,
                         sigma_prior=1,
                         hierarchical_sigma_prior=5,
+                        adapt=adapt,
                     )
                 else:
                     err = f"Invalid covariate type '{cov.cov_type}' for '{cov.name}'."
@@ -1171,35 +1376,52 @@ class DirectNormativeModel:
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         sigma_prior: float = 0.1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a linear effect for a numerical covariate on the variance estimate.
         """
         # Linear effect
-        linear_beta = pm.Normal(
-            f"variance_linear_beta_{cov.name}",
-            mu=0,
-            sigma=sigma_prior,
-            size=1,
-            dims=(f"{cov.name}_linear",),
-        )
+        if adapt is None:  # Model fitting
+            linear_beta = pm.Normal(
+                f"variance_linear_beta_{cov.name}",
+                mu=0,
+                sigma=sigma_prior,
+                size=1,
+                dims=(f"{cov.name}_linear",),
+            )
+            # Increment parameter count for linear effect
+            self.model_params["n_params"] += 1
+        else:  # Freeze during adaptation/fine-tuning
+            linear_beta = pm.Deterministic(
+                f"variance_linear_beta_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"variance_linear_beta_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_linear",),
+            )
         if cov.moments is not None:  # to satisfy type checker
             effects_list.append(
-                ((train_data[cov.name].to_numpy() - cov.moments[0]) / cov.moments[1])
+                (
+                    cast("npt.NDArray[Any]", train_data[cov.name].to_numpy())
+                    - cov.moments[0]
+                )
+                / cov.moments[1]
                 * linear_beta,
             )
-        # Increment parameter count for linear effect
-        self.model_params["n_params"] += 1
 
     def _model_spline_variance_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 0.1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a spline effect for a numerical covariate on the variance estimate.
@@ -1207,28 +1429,43 @@ class DirectNormativeModel:
         # Spline effect
         spline_bases[cov.name] = spline_bases.get(
             cov.name,
-            cov.make_spline_bases(train_data[cov.name].to_numpy()),
+            cov.make_spline_bases(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        spline_betas = pm.ZeroSumNormal(
-            f"variance_spline_betas_{cov.name}",
-            sigma=sigma_prior,
-            shape=spline_bases[cov.name].shape[1],
-            dims=(f"{cov.name}_splines",),
-        )
-        # Note ZeroSumNormal imposes a centering constraint (ensuring identifiability)
-        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))  # type: ignore[no-untyped-call]
-        # Increment parameter count for spline effects
-        if cov.spline_spec is not None:  # to satisfy type checker
-            self.model_params["n_params"] += cov.spline_spec.df - 1
+        if adapt is None:  # Model fitting
+            spline_betas = pm.ZeroSumNormal(
+                f"variance_spline_betas_{cov.name}",
+                sigma=sigma_prior,
+                shape=spline_bases[cov.name].shape[1],
+                dims=(f"{cov.name}_splines",),
+            )
+            # Note ZeroSumNormal imposes a centering constraint
+            # (ensuring identifiability)
+            # Increment parameter count for spline effects
+            if cov.spline_spec is not None:  # to satisfy type checker
+                self.model_params["n_params"] += cov.spline_spec.df - 1
+        else:  # Freeze during adaptation/fine-tuning
+            spline_betas = pm.Deterministic(
+                f"variance_spline_betas_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"variance_spline_betas_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_splines",),
+            )
+        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))
 
     def _model_categorical_variance_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 0.1,
         hierarchical_sigma_prior: float = 0.1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model the effect of a categorical covariate on the variance estimate.
@@ -1236,73 +1473,217 @@ class DirectNormativeModel:
         # Factorize categories
         category_indices[cov.name] = category_indices.get(
             cov.name,
-            cov.factorize_categories(train_data[cov.name].to_numpy()),
+            cov.factorize_categories(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        if cov.hierarchical:
-            # Hierarchical categorical effect
-            # Hyperpriors for category (Bayesian equivalent of random effects)
-            sigma_intercept_category = pm.HalfNormal(
-                f"variance_sigma_intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=("scalar",),
-            )
+        if adapt is None:  # Model fitting
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.HalfNormal(
+                    f"variance_sigma_intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=("scalar",),
+                )
 
-            # Hierarchical intercepts for each category (using reparameterized form)
-            categorical_intercept_offset = pm.ZeroSumNormal(
-                f"variance_intercept_offset_{cov.name}",
-                sigma=hierarchical_sigma_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
-            categorical_intercept = pm.Deterministic(
-                f"variance_intercept_{cov.name}",
-                (
-                    categorical_intercept_offset
-                    * pt.reshape(sigma_intercept_category, (1,))  # type: ignore[attr-defined]
-                ),
-                dims=(cov.name,),
-            )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.ZeroSumNormal(
+                    f"variance_intercept_offset_{cov.name}",
+                    sigma=hierarchical_sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+                categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
 
-            # Increment parameter count for hierarchical intercept
-            self.model_params["n_params"] += 1
+                # Increment parameter count for hierarchical intercept
+                self.model_params["n_params"] += 1
 
-        else:
-            # Non-hierarchical (linear) categorical effect
-            categorical_intercept = pm.ZeroSumNormal(
-                f"variance_intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
+            else:
+                # Non-hierarchical (linear) categorical effect
+                categorical_intercept = pm.ZeroSumNormal(
+                    f"variance_intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+            # Increment parameter count for categorical effects
+            if cov.categories is not None:  # to satisfy type checker
+                self.model_params["n_params"] += len(cov.categories) - 1
+        elif cov.name != adapt["covariate_to_adapt"]:
+            # Freeze during adaptation/fine-tuning
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.Deterministic(
+                    f"variance_sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.Deterministic(
+                    f"variance_intercept_offset_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_intercept_offset_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+        else:  # Partial freezing (fit parameters for the new site only)
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                # Hyperpriors are fixed during adaptation
+                sigma_intercept_category = pm.Deterministic(
+                    f"variance_sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept_offset = pm.Deterministic(
+                    f"variance_intercept_offset_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_intercept_offset_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                pretrain_sigma_prior = adapt["pretrained_model_params"][
+                    "posterior_means"
+                ][f"variance_intercept_offset_{cov.name}"].std()
+                new_categorical_intercept_offset = pm.Normal(
+                    f"variance_intercept_offset_{cov.name}_adapt",
+                    mu=0,
+                    sigma=pretrain_sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new offsets
+                categorical_intercept_offset = pm.Deterministic(
+                    f"variance_intercept_offset_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept_offset,
+                            new_categorical_intercept_offset,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                # Non-hierarchical (linear) categorical effect
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"variance_intercept_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                new_categorical_intercept = pm.Normal(
+                    f"variance_intercept_{cov.name}_adapt",
+                    mu=0,
+                    sigma=sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new offsets
+                categorical_intercept = pm.Deterministic(
+                    f"variance_intercept_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept,
+                            new_categorical_intercept,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+            self.model_params["n_params"] += new_category_count
         effects_list.append(
             categorical_intercept[category_indices[cov.name]],
         )
-        # Increment parameter count for categorical effects
-        if cov.categories is not None:  # to satisfy type checker
-            self.model_params["n_params"] += len(cov.categories) - 1
 
     def _model_all_variance_effects(
         self,
         train_data: pd.DataFrame,
         spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         category_indices: dict[str, npt.NDArray[np.integer[Any]]],
-    ) -> list[TensorVariable[Any, Any]]:
+        adapt: dict[str, Any] | None = None,
+    ) -> list[TensorVariable]:
         """
         Model all covariate variance effects.
         """
         variance_effects = []
         # Model the global variance
-        global_variance_baseline = pm.Normal(
-            "global_variance_baseline",
-            mu=-0.0,
-            sigma=0.5,
-            dims=("scalar",),
-        )
+        if adapt is None:
+            global_variance_baseline = pm.Normal(
+                "global_variance_baseline",
+                mu=-0.0,
+                sigma=0.5,
+                dims=("scalar",),
+            )
+            # Increment parameter count for global variance
+            self.model_params["n_params"] += 1
+        else:
+            global_variance_baseline = pm.Deterministic(
+                "global_variance_baseline",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        "global_variance_baseline"
+                    ],
+                ),
+                dims=("scalar",),
+            )
         variance_effects.append(global_variance_baseline)
-        # Increment parameter count for global variance
-        self.model_params["n_params"] += 1
         # Model additional covariate effects on the variance
         for cov in self.spec.covariates:
             if cov.name in self.spec.influencing_variance:
@@ -1313,6 +1694,7 @@ class DirectNormativeModel:
                             cov,
                             variance_effects,
                             sigma_prior=0.1,
+                            adapt=adapt,
                         )
                     elif cov.effect == "spline":
                         self._model_spline_variance_effect(
@@ -1321,6 +1703,7 @@ class DirectNormativeModel:
                             variance_effects,
                             spline_bases,
                             sigma_prior=0.1,
+                            adapt=adapt,
                         )
                 elif cov.cov_type == "categorical":
                     self._model_categorical_variance_effect(
@@ -1330,6 +1713,7 @@ class DirectNormativeModel:
                         category_indices,
                         sigma_prior=0.1,
                         hierarchical_sigma_prior=0.1,
+                        adapt=adapt,
                     )
                 else:
                     err = f"Invalid covariate type '{cov.cov_type}' for '{cov.name}'."
@@ -1338,8 +1722,8 @@ class DirectNormativeModel:
 
     def _combine_all_effects(
         self,
-        mean_effects: list[TensorVariable[Any, Any]],
-        variance_effects: list[TensorVariable[Any, Any]],
+        mean_effects: list[TensorVariable],
+        variance_effects: list[TensorVariable],
         standardized_voi: npt.NDArray[np.floating[Any]],
     ) -> None:
         """
@@ -1350,13 +1734,15 @@ class DirectNormativeModel:
         log_sigma_estimate = sum(variance_effects)
         sigma_estimate = pt.exp(log_sigma_estimate)
 
+        effective_sample_size = self.model_params["sample_size"]
+
         # Model likelihood of the variable of interest
         _likelihood = pm.Normal(
             f"likelihood_{self.spec.variable_of_interest}",
             mu=mu_estimate,
             sigma=sigma_estimate,
             observed=standardized_voi,
-            total_size=self.model_params["sample_size"],
+            total_size=effective_sample_size,
         )
 
     def _fit_model_with_advi(self, *, progress_bar: bool = True) -> None:
@@ -1365,7 +1751,7 @@ class DirectNormativeModel:
         """
         base_lr = self.defaults["adam_learning_rate"]
         decay = self.defaults["adam_learning_rate_decay"]
-        lr = shared(base_lr)  # type: ignore[no-untyped-call]
+        lr = shared(base_lr)
         optimizer = pm.adam(learning_rate=cast("float", lr))
 
         # Adaptive learning rate schedule callback
@@ -1415,6 +1801,7 @@ class DirectNormativeModel:
         *,
         save_directory: Path | None = None,
         progress_bar: bool = True,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Fit the normative model to the training data.
@@ -1431,13 +1818,31 @@ class DirectNormativeModel:
                 will be saved to this path.
             progress_bar: bool
                 If True, display a progress bar during fitting. Defaults to True.
+            adapt: dict[str, Any] | None
+                If provided, adapt a pre-trained model to a new covariate.
+                Note: We recommended using the `adapt_fit` method, and not directly
+                changing this argument, unless you know what you are doing.
         """
         # Validation checks
         self._validate_model()
         self._validate_dataframe_for_fitting(train_data)
 
+        # Extract the variable of interest
+        variable_of_interest = train_data[self.spec.variable_of_interest].to_numpy()
+
         # A dictionary to hold the model parameters after fitting
-        self.model_params = {}
+        if adapt is None:
+            self.model_params = {}
+            self.model_params["mean_VOI"] = variable_of_interest.mean()
+            self.model_params["std_VOI"] = variable_of_interest.std()
+            self.model_params["sample_size"] = variable_of_interest.shape[0]
+            # Initialize parameter count
+            self.model_params["n_params"] = 0
+        else:
+            # Update the pretrained model parameters
+            if not hasattr(self, "model_params") or self.model_params is None:
+                self.model_params = copy.deepcopy(adapt["pretrained_model_params"])
+            self.model_params["sample_size"] += variable_of_interest.shape[0]
 
         # Data preparation
         model_coords = self._build_model_coordinates(
@@ -1448,13 +1853,9 @@ class DirectNormativeModel:
         with pm.Model(coords=model_coords) as self._model:
             # Standardize the variable of interest, and store mean and std
             # This ensures that the model is not sensitive to the scale of the variable
-            variable_of_interest = train_data[self.spec.variable_of_interest].to_numpy()
-            self.model_params["mean_VOI"] = variable_of_interest.mean()
-            self.model_params["std_VOI"] = variable_of_interest.std()
             standardized_voi = (
                 variable_of_interest - self.model_params["mean_VOI"]
             ) / self.model_params["std_VOI"]
-            self.model_params["sample_size"] = variable_of_interest.shape[0]
 
             # A dictionary for precomputed bspline basis functions
             spline_bases: dict[str, npt.NDArray[np.floating[Any]]] = {}
@@ -1462,14 +1863,12 @@ class DirectNormativeModel:
             # A dictionary for factorized categories
             category_indices: dict[str, npt.NDArray[np.integer[Any]]] = {}
 
-            # Initialize parameter count
-            self.model_params["n_params"] = 0
-
             # Model the mean of the variable of interest
             mean_effects = self._model_all_mean_effects(
                 train_data,
                 spline_bases,
                 category_indices,
+                adapt=adapt,
             )
 
             # Model the variance of the variable of interest
@@ -1477,10 +1876,15 @@ class DirectNormativeModel:
                 train_data,
                 spline_bases,
                 category_indices,
+                adapt=adapt,
             )
 
             # Combine all mean and variance effects
-            self._combine_all_effects(mean_effects, variance_effects, standardized_voi)
+            self._combine_all_effects(
+                mean_effects,
+                variance_effects,
+                standardized_voi,
+            )
 
             # Fit the model using ADVI
             self._fit_model_with_advi(progress_bar=progress_bar)
@@ -1488,6 +1892,82 @@ class DirectNormativeModel:
         # Save the model if a save path is provided
         if save_directory is not None:
             self.save_model(Path(save_directory))
+
+    def adapt_fit(
+        self,
+        covariate_to_adapt: str,
+        new_category_names: npt.NDArray[np.str_],
+        train_data: pd.DataFrame,
+        *,
+        pretrained_model_params: dict[str, Any] | None = None,
+        save_directory: Path | None = None,
+        progress_bar: bool = True,
+    ) -> None:
+        """
+        Using a previously fitted model, adapt the model to a new batch.
+        This method enables adaptation of the model to data from a new
+        batch/site by freezing all fitted parameters, and only estimating
+        new parameters for the new batch/site category.
+
+        Args:
+            covariate_to_adapt: str
+                Name of the categorical covariate representing the batch/site
+                to which the model should be adapted.
+                Note: This covariate must have been specified in the original
+                model.
+            new_category_names: list[str]
+                Names of the new categories in the covariate_to_adapt representing
+                the new batch/site labels (e.g. names of the new site).
+                Note: These names must not have been present in the original
+                fitted model.
+            train_data: pd.DataFrame
+                DataFrame containing the training data for adaptation.
+                It must include the variable of interest and all specified covariates.
+                Note: The covariate_to_adapt column must only contain the
+                new_category_names (no new data from previously trained batches).
+            pretrained_model_params: dict[str, Any] | None
+                The model parameters from a previously fitted model to adapt.
+                If None, the model parameters from the current instance will be used
+                (assuming fitting was done).
+            save_directory: Path | None
+                A path to a directory to save the adapted model. If provided,
+                the fitted model will be saved to this path.
+            progress_bar: bool
+                If True, display a progress bar during fitting. Defaults to True.
+        """
+        # Validation checks
+        self._validate_model()
+        self._validate_dataframe_for_fitting(train_data)
+
+        # Locate the covariate to adapt
+        cov_to_adapt_index = [cov.name for cov in self.spec.covariates].index(
+            covariate_to_adapt,
+        )
+
+        # Extend the covariate categories to include the new categories
+        self.spec.covariates[cov_to_adapt_index].extend_categories(new_category_names)
+
+        # Extract the pre-trained model parameters
+        if pretrained_model_params is None:
+            if not self.model_params:
+                err = (
+                    "No pretrained model parameters found. "
+                    "Please provide pretrained_model_params or fit the model first."
+                )
+                raise ValueError(err)
+            pretrained_model_params = copy.deepcopy(self.model_params)
+
+        # Fit the adapted model
+        self.fit(
+            train_data,
+            save_directory=save_directory,
+            progress_bar=progress_bar,
+            adapt={
+                "covariate_to_adapt": covariate_to_adapt,
+                "new_category_names": new_category_names,
+                "pretrained_model_params": pretrained_model_params,
+            },
+        )
 
     def _predict_mu(
         self,
@@ -1512,14 +1992,23 @@ class DirectNormativeModel:
                     if cov.effect == "linear":
                         if cov.moments is not None:  # to satisfy type checker
                             mu_estimate += (
-                                (test_covariates[cov.name].to_numpy() - cov.moments[0])
+                                (
+                                    cast(
+                                        "npt.NDArray[Any]",
+                                        test_covariates[cov.name].to_numpy(),
+                                    )
+                                    - cov.moments[0]
+                                )
                                 / cov.moments[1]
                             ) * model_params["posterior_means"][
                                 f"linear_beta_{cov.name}"
                             ]
                     elif cov.effect == "spline":
                         spline_bases = cov.make_spline_bases(
-                            test_covariates[cov.name].to_numpy(),
+                            cast(
+                                "npt.NDArray[Any]",
+                                test_covariates[cov.name].to_numpy(),
+                            ),
                         )
                         spline_betas = model_params["posterior_means"][
                             f"spline_betas_{cov.name}"
@@ -1527,7 +2016,7 @@ class DirectNormativeModel:
                         mu_estimate += np.dot(spline_bases, spline_betas)
                 elif cov.cov_type == "categorical":
                     category_indices = cov.factorize_categories(
-                        test_covariates[cov.name].to_numpy(),
+                        cast("npt.NDArray[Any]", test_covariates[cov.name].to_numpy()),
                     )
                     if cov.hierarchical:
                         categorical_intercept = (
@@ -1572,14 +2061,23 @@ class DirectNormativeModel:
                     if cov.effect == "linear":
                         if cov.moments is not None:  # to satisfy type checker
                             log_sigma_estimate += (
-                                (test_covariates[cov.name].to_numpy() - cov.moments[0])
+                                (
+                                    cast(
+                                        "npt.NDArray[Any]",
+                                        test_covariates[cov.name].to_numpy(),
+                                    )
+                                    - cov.moments[0]
+                                )
                                 / cov.moments[1]
                             ) * model_params["posterior_means"][
                                 f"variance_linear_beta_{cov.name}"
                             ]
                     elif cov.effect == "spline":
                         spline_bases = cov.make_spline_bases(
-                            test_covariates[cov.name].to_numpy(),
+                            cast(
+                                "npt.NDArray[Any]",
+                                test_covariates[cov.name].to_numpy(),
+                            ),
                         )
                         variance_spline_betas = model_params["posterior_means"][
                             f"variance_spline_betas_{cov.name}"
@@ -1587,7 +2085,7 @@ class DirectNormativeModel:
                         log_sigma_estimate += spline_bases @ variance_spline_betas
                 elif cov.cov_type == "categorical":
                     category_indices = cov.factorize_categories(
-                        test_covariates[cov.name].to_numpy(),
+                        cast("npt.NDArray[Any]", test_covariates[cov.name].to_numpy()),
                     )
                     if cov.hierarchical:
                         categorical_variance_intercept = (
@@ -1652,8 +2150,10 @@ class DirectNormativeModel:
         utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # Parameters
+        model_params = model_params or self.model_params
         if model_params is None:
-            model_params = self.model_params
+            err = "No model parameters found. Please provide model_params."
+            raise ValueError(err)
 
         # Calculate mean and variance effects and store in the predictions object
         predictions = NormativePredictions(
@@ -1675,9 +2175,12 @@ class DirectNormativeModel:
         if extended:
             # Add extended statistics to predictions (e.g. centiles, log loss, etc.)
             predictions.extend_predictions(
-                variable_of_interest=test_covariates[
-                    self.spec.variable_of_interest
-                ].to_numpy(),
+                variable_of_interest=(
+                    cast(
+                        "npt.NDArray[Any]",
+                        test_covariates[self.spec.variable_of_interest].to_numpy(),
+                    )
+                ),
             )
 
         return predictions
@@ -1697,7 +2200,12 @@ class DirectNormativeModel:
         """
         # Run extended predictions
         return self.predict(test_covariates=new_data).evaluate_predictions(
-            variable_of_interest=new_data[self.spec.variable_of_interest].to_numpy(),
+            variable_of_interest=(
+                cast(
+                    "npt.NDArray[Any]",
+                    new_data[self.spec.variable_of_interest].to_numpy(),
+                )
+            ),
             train_mean=self.model_params["mean_VOI"],
             train_std=self.model_params["std_VOI"],
             n_params=self.model_params["n_params"],
@@ -1755,7 +2263,7 @@ class DirectNormativeModel:
 
         # First standardize the variable of interest based on the full model
         voi_standardized = (
-            data[self.spec.variable_of_interest].to_numpy()
+            (cast("npt.NDArray[Any]", data[self.spec.variable_of_interest].to_numpy()))
             - full_predictions.predictions["mu_estimate"]
         ) / full_predictions.predictions["std_estimate"]
 
@@ -1798,7 +2306,6 @@ class CovarianceNormativeModel:
             "random_seed": DEFAULT_RANDOM_SEED,
             "adam_learning_rate": DEFAULT_ADAM_LEARNING_RATE,
             "adam_learning_rate_decay": DEFAULT_ADAM_LEARNING_RATE_DECAY,
-            "augmentation_multiplicity": DEFAULT_COVARIANCE_AUGMENTATION_MULTIPLICITY,
         },
     )
 
@@ -2016,35 +2523,54 @@ class CovarianceNormativeModel:
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         sigma_prior: float = 0.1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a linear effect for a numerical covariate.
         """
         # Linear effect
-        linear_beta = pm.Normal(
-            f"linear_beta_{cov.name}",
-            mu=0,
-            sigma=sigma_prior,
-            size=1,
-            dims=(f"{cov.name}_linear",),
-        )
+        if adapt is None:  # Model fitting
+            linear_beta = pm.Normal(
+                f"linear_beta_{cov.name}",
+                mu=0,
+                sigma=sigma_prior,
+                size=1,
+                dims=(f"{cov.name}_linear",),
+            )
+            # Increment parameter count for linear effect
+            self.model_params["n_params"] += 1
+        else:  # Freeze during adaptation/fine-tuning
+            linear_beta = pm.Deterministic(
+                f"linear_beta_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"linear_beta_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_linear",),
+            )
         if cov.moments is not None:  # to satisfy type checker
             effects_list.append(
-                ((train_data[cov.name].to_numpy() - cov.moments[0]) / cov.moments[1])
+                (
+                    (
+                        (cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()))
+                        - cov.moments[0]
+                    )
+                    / cov.moments[1]
+                )
                 * linear_beta,
             )
-        # Increment parameter count for linear effect
-        self.model_params["n_params"] += 1
 
     def _model_spline_correlation_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
         sigma_prior: float = 1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model a spline effect for a numerical covariate.
@@ -2052,28 +2578,43 @@ class CovarianceNormativeModel:
         # Spline effect
         spline_bases[cov.name] = spline_bases.get(
             cov.name,
-            cov.make_spline_bases(train_data[cov.name].to_numpy()),
+            cov.make_spline_bases(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        spline_betas = pm.ZeroSumNormal(
-            f"spline_betas_{cov.name}",
-            sigma=sigma_prior,
-            shape=spline_bases[cov.name].shape[1],
-            dims=(f"{cov.name}_splines",),
-        )
-        # Note ZeroSumNormal imposes a centering constraint (ensuring identifiability)
-        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))  # type: ignore[no-untyped-call]
-        # Increment parameter count for spline effects
-        if cov.spline_spec is not None:  # to satisfy type checker
-            self.model_params["n_params"] += cov.spline_spec.df - 1
+        if adapt is None:  # Model fitting
+            spline_betas = pm.ZeroSumNormal(
+                f"spline_betas_{cov.name}",
+                sigma=sigma_prior,
+                shape=spline_bases[cov.name].shape[1],
+                dims=(f"{cov.name}_splines",),
+            )
+            # Note ZeroSumNormal imposes a centering constraint
+            # (ensuring identifiability)
+            # Increment parameter count for spline effects
+            if cov.spline_spec is not None:  # to satisfy type checker
+                self.model_params["n_params"] += cov.spline_spec.df - 1
+        else:  # Freeze during adaptation/fine-tuning
+            spline_betas = pm.Deterministic(
+                f"spline_betas_{cov.name}",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        f"spline_betas_{cov.name}"
+                    ],
+                ),
+                dims=(f"{cov.name}_splines",),
+            )
+        effects_list.append(pt.dot(spline_bases[cov.name], spline_betas.T))
 
     def _model_categorical_correlation_effect(
         self,
         train_data: pd.DataFrame,
         cov: CovariateSpec,
-        effects_list: list[TensorVariable[Any, Any]],
+        effects_list: list[TensorVariable],
         category_indices: dict[str, npt.NDArray[np.integer[Any]]],
         sigma_prior: float = 1,
-        sigma_hierarchical_prior: float = 0.1,
+        hierarchical_sigma_prior: float = 0.1,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Model the effect of a categorical covariate.
@@ -2081,56 +2622,256 @@ class CovarianceNormativeModel:
         # Factorize categories
         category_indices[cov.name] = category_indices.get(
             cov.name,
-            cov.factorize_categories(train_data[cov.name].to_numpy()),
+            cov.factorize_categories(
+                cast("npt.NDArray[Any]", train_data[cov.name].to_numpy()),
+            ),
         )
-        if cov.hierarchical:
-            # Hierarchical categorical effect
-            # Hyperpriors for category (Bayesian equivalent of random effects)
-            sigma_intercept_category = pm.HalfNormal(
-                f"sigma_intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=("scalar",),
-            )
+        if adapt is None:  # Model fitting
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.HalfNormal(
+                    f"sigma_intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=("scalar",),
+                )
 
-            # Hierarchical intercepts for each category (using reparameterized form)
-            categorical_intercept_offset = pm.ZeroSumNormal(
-                f"intercept_offset_{cov.name}",
-                sigma=sigma_hierarchical_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
-            categorical_intercept = pm.Deterministic(
-                f"intercept_{cov.name}",
-                (
-                    categorical_intercept_offset
-                    * pt.reshape(sigma_intercept_category, (1,))  # type: ignore[attr-defined]
-                ),
-                dims=(cov.name,),
-            )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.ZeroSumNormal(
+                    f"intercept_offset_{cov.name}",
+                    sigma=hierarchical_sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
 
-            # Increment parameter count for hierarchical intercept
-            self.model_params["n_params"] += 1
+                # Increment parameter count for hierarchical intercept
+                self.model_params["n_params"] += 1
 
+            else:
+                # Non-hierarchical (linear) categorical effect
+                categorical_intercept = pm.ZeroSumNormal(
+                    f"intercept_{cov.name}",
+                    sigma=sigma_prior,
+                    dims=(cov.name,),
+                )
+                # Note ZeroSumNormal imposes a centering constraint
+                # (ensuring identifiability)
+            # Increment parameter count for categorical effects
+            if cov.categories is not None:  # to satisfy type checker
+                self.model_params["n_params"] += len(cov.categories) - 1
+        elif cov.name != adapt["covariate_to_adapt"]:
+            # Freeze during adaptation/fine-tuning
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                sigma_intercept_category = pm.Deterministic(
+                    f"sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_offset_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                # Non-hierarchical (linear) categorical effect
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
         else:
-            # Non-hierarchical (linear) categorical effect
-            categorical_intercept = pm.ZeroSumNormal(
-                f"intercept_{cov.name}",
-                sigma=sigma_prior,
-                dims=(cov.name,),
-            )
-            # Note ZeroSumNormal imposes a centering constraint
-            # (ensuring identifiability)
+            if cov.hierarchical:
+                # Hierarchical categorical effect
+                # Hyperpriors for category (Bayesian equivalent of random effects)
+                # Hyperpriors are fixed during adaptation
+                sigma_intercept_category = pm.Deterministic(
+                    f"sigma_intercept_{cov.name}",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"sigma_intercept_{cov.name}"
+                        ],
+                    ),
+                    dims=("scalar",),
+                )
+                # Hierarchical intercepts for each category (using reparameterized form)
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_offset_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                new_categorical_intercept_offset = pm.Normal(
+                    f"intercept_offset_{cov.name}_adapt",
+                    mu=0,
+                    sigma=hierarchical_sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new offsets
+                categorical_intercept_offset = pm.Deterministic(
+                    f"intercept_offset_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept_offset,
+                            new_categorical_intercept_offset,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    (
+                        categorical_intercept_offset
+                        * pt.reshape(sigma_intercept_category, (1,))
+                    ),
+                    dims=(cov.name,),
+                )
+            else:
+                # Non-hierarchical (linear) categorical effect
+                # New categories get new parameters, old categories are fixed
+                # Freeze old category parameters during adaptation
+                fixed_categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}_fixed",
+                    pt.as_tensor_variable(
+                        adapt["pretrained_model_params"]["posterior_means"][
+                            f"intercept_{cov.name}"
+                        ],
+                    ),
+                )
+                # Create new parameters for new categories
+                new_category_count = len(adapt["new_category_names"])
+                new_categorical_intercept = pm.Normal(
+                    f"intercept_{cov.name}_adapt",
+                    mu=0,
+                    sigma=sigma_prior,
+                    size=new_category_count,
+                )
+                # Combine fixed and new intercepts
+                categorical_intercept = pm.Deterministic(
+                    f"intercept_{cov.name}",
+                    pt.concatenate(
+                        [
+                            fixed_categorical_intercept,
+                            new_categorical_intercept,
+                        ],
+                    ),
+                    dims=(cov.name,),
+                )
+            self.model_params["n_params"] += new_category_count
         effects_list.append(
             categorical_intercept[category_indices[cov.name]],
         )
-        # Increment parameter count for categorical effects
-        if cov.categories is not None:  # to satisfy type checker
-            self.model_params["n_params"] += len(cov.categories) - 1
+
+    def _model_all_correlation_effects(
+        self,
+        train_data: pd.DataFrame,
+        spline_bases: dict[str, npt.NDArray[np.floating[Any]]],
+        category_indices: dict[str, npt.NDArray[np.integer[Any]]],
+        adapt: dict[str, Any] | None = None,
+    ) -> list[TensorVariable]:
+        """
+        Model all covariate correlation effects.
+        """
+        # Create a list to contain the effects of covariates on
+        # the z-transformed correlation
+        z_transformed_correlation_effects = []
+
+        # Model the z-transformed correlation between the variables of interest
+        # Model the global intercept for z
+        if adapt is None:
+            global_intercept_z = pm.Normal(
+                "global_intercept_z",
+                mu=0,
+                sigma=5,
+                dims=("scalar",),
+            )
+            # Increment parameter count for global intercept
+            self.model_params["n_params"] += 1
+        else:
+            # Use the pretrained global intercept
+            global_intercept_z = pm.Deterministic(
+                "global_intercept_z",
+                pt.as_tensor_variable(
+                    adapt["pretrained_model_params"]["posterior_means"][
+                        "global_intercept_z"
+                    ],
+                ),
+                dims=("scalar",),
+            )
+        z_transformed_correlation_effects.append(global_intercept_z)
+        # Model additional covariate effects on the z estimate
+        for cov in self.spec.covariates:
+            if cov.name in self.spec.influencing_covariance:
+                if cov.cov_type == "numerical":
+                    if cov.effect == "linear":
+                        self._model_linear_correlation_effect(
+                            train_data=train_data,
+                            cov=cov,
+                            effects_list=z_transformed_correlation_effects,
+                            adapt=adapt,
+                        )
+                    elif cov.effect == "spline":
+                        self._model_spline_correlation_effect(
+                            train_data=train_data,
+                            cov=cov,
+                            effects_list=z_transformed_correlation_effects,
+                            spline_bases=spline_bases,
+                            adapt=adapt,
+                        )
+                elif cov.cov_type == "categorical":
+                    self._model_categorical_correlation_effect(
+                        train_data=train_data,
+                        cov=cov,
+                        effects_list=z_transformed_correlation_effects,
+                        category_indices=category_indices,
+                        adapt=adapt,
+                    )
+
+                else:
+                    err = f"Invalid covariate type '{cov.cov_type}' for '{cov.name}'."
+                    raise ValueError(err)
+        return z_transformed_correlation_effects
 
     def _combine_all_correlation_effects(
         self,
-        z_transformed_correlation_effects: list[TensorVariable[Any, Any]],
+        z_transformed_correlation_effects: list[TensorVariable],
         combination_indices: npt.NDArray[np.integer[Any]],
         combination_weights: npt.NDArray[np.floating[Any]],
         standardized_vois: npt.NDArray[np.floating[Any]],
@@ -2149,7 +2890,7 @@ class CovarianceNormativeModel:
 
         # Now apply the random combinations to get final distribution estimates
         # Apply combination weights for mu estimate
-        combined_mu_estimate = pt.sum(  # type: ignore[no-untyped-call]
+        combined_mu_estimate = pt.sum(
             pt.mul(
                 standardized_vois_mu_estimate[combination_indices, :],
                 combination_weights,
@@ -2176,7 +2917,7 @@ class CovarianceNormativeModel:
         )
 
         # Apply combination to the variables of interest
-        combined_variable_of_interest = pt.sum(  # type: ignore[no-untyped-call]
+        combined_variable_of_interest = pt.sum(
             pt.mul(
                 standardized_vois[combination_indices, :],
                 combination_weights,
@@ -2184,16 +2925,15 @@ class CovarianceNormativeModel:
             axis=1,
         )
 
+        effective_sample_size = self.model_params["sample_size"]
+
         # Model likelihood estimation for covariance model
         _likelihood = pm.Normal(
             f"likelihood_cov_{self.spec.variable_of_interest_1}_{self.spec.variable_of_interest_2}",
             mu=combined_mu_estimate,
             sigma=combined_std_estimate,
             observed=combined_variable_of_interest,
-            total_size=(
-                self.model_params["sample_size"]
-                * self.defaults["augmentation_multiplicity"]
-            ),
+            total_size=(effective_sample_size),
         )
 
     def _fit_model_with_advi(self, *, progress_bar: bool = True) -> None:
@@ -2202,7 +2942,7 @@ class CovarianceNormativeModel:
         """
         base_lr = self.defaults["adam_learning_rate"]
         decay = self.defaults["adam_learning_rate_decay"]
-        lr = shared(base_lr)  # type: ignore[no-untyped-call]  # type: ignore[no-untyped-call]
+        lr = shared(base_lr)
         optimizer = pm.adam(learning_rate=cast("float", lr))
 
         # Adaptive learning rate schedule callback
@@ -2254,6 +2994,7 @@ class CovarianceNormativeModel:
         *,
         save_directory: Path | None = None,
         progress_bar: bool = True,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Fit the normative model to the training data.
@@ -2270,40 +3011,40 @@ class CovarianceNormativeModel:
                 will be saved to this path.
             progress_bar: bool
                 If True, display a progress bar during fitting. Defaults to True.
+            adapt: dict[str, Any] | None
+                If provided, adapt a pre-trained model to a new covariate.
+                Note: We recommended using the `adapt_fit` method, and not directly
+                changing this argument, unless you know what you are doing.
         """
         # Validation checks
         self._validate_model()
         self._validate_dataframe_for_fitting(train_data)
 
-        # Random number generator seed for reproducibility
-        rng = np.random.default_rng(seed=self.defaults["random_seed"])
+        # Extract the variables of interest
+        variables_of_interest = train_data[
+            [self.spec.variable_of_interest_1, self.spec.variable_of_interest_2]
+        ].to_numpy()
 
         # A dictionary to hold the model parameters after fitting
-        self.model_params = {}
+        if adapt is None:
+            self.model_params = {}
+            self.model_params["mean_vois"] = variables_of_interest.mean(axis=0)
+            self.model_params["std_vois"] = variables_of_interest.std(axis=0)
+            self.model_params["sample_size"] = variables_of_interest.shape[0]
+            # Initialize parameter count
+            self.model_params["n_params"] = 0
+        else:
+            # Update the pretrained model parameters
+            if not hasattr(self, "model_params") or self.model_params is None:
+                self.model_params = copy.deepcopy(adapt["pretrained_model_params"])
+            self.model_params["sample_size"] += variables_of_interest.shape[0]
 
         # Data preparation
         # Combination weights
-        combination_weights = np.ones(
-            shape=(train_data.shape[0] * self.defaults["augmentation_multiplicity"], 2),
-        )
-        if self.defaults["augmentation_multiplicity"] > 1:
-            combination_weights = np.cbrt(
-                rng.uniform(
-                    low=-1,
-                    high=1,
-                    size=(
-                        train_data.shape[0]
-                        * self.defaults["augmentation_multiplicity"],
-                        2,
-                    ),
-                ),
-            )
+        combination_weights = np.ones(shape=(train_data.shape[0], 2))
+
         # Data coordinates
-        combination_indices = np.repeat(
-            np.arange(train_data.shape[0])[np.newaxis, :],
-            repeats=self.defaults["augmentation_multiplicity"],
-            axis=0,
-        ).ravel()
+        combination_indices = np.arange(train_data.shape[0])
         model_coords = self._build_model_coordinates(
             observations=combination_indices,
         )
@@ -2313,16 +3054,9 @@ class CovarianceNormativeModel:
             # Standardize the variable of interest, and store mean and std
             # This is done to ensure that the model is not sensitive to
             # the scale of the variable
-            variables_of_interest = train_data[
-                [self.spec.variable_of_interest_1, self.spec.variable_of_interest_2]
-            ].to_numpy()
-            self.model_params["mean_vois"] = variables_of_interest.mean(axis=0)
-            self.model_params["std_vois"] = variables_of_interest.std(axis=0)
             standardized_vois = (
                 variables_of_interest - self.model_params["mean_vois"]
             ) / self.model_params["std_vois"]
-            sample_size = variables_of_interest.shape[0]
-            self.model_params["sample_size"] = sample_size
             variables_of_interest_mu_estimate = train_data[
                 [
                     f"{self.spec.variable_of_interest_1}_mu_estimate",
@@ -2342,58 +3076,19 @@ class CovarianceNormativeModel:
                 variables_of_interest_std_estimate / self.model_params["std_vois"]
             )
 
-            # Create a list to contain the effects of covariates on
-            # the z-transformed correlation
-            z_transformed_correlation_effects = []
-
             # A dictionary for precomputed bspline basis functions
             spline_bases: dict[str, npt.NDArray[np.floating[Any]]] = {}
 
             # A dictionary for factorized categories
             category_indices: dict[str, npt.NDArray[np.integer[Any]]] = {}
 
-            # Model the z-transformed correlation between the variables of interest
-            self.model_params["n_params"] = 0  # Initialize parameter count
-            # Model the global intercept for z
-            global_intercept_z = pm.Normal(
-                "global_intercept_z",
-                mu=0,
-                sigma=5,
-                dims=("scalar",),
+            # Model the covariance between the variables of interest
+            z_transformed_correlation_effects = self._model_all_correlation_effects(
+                train_data,
+                spline_bases,
+                category_indices,
+                adapt=adapt,
             )
-            z_transformed_correlation_effects.append(global_intercept_z)
-            # Increment parameter count for global intercept
-            self.model_params["n_params"] += 1
-            # Model additional covariate effects on the z estimate
-            for cov in self.spec.covariates:
-                if cov.name in self.spec.influencing_covariance:
-                    if cov.cov_type == "numerical":
-                        if cov.effect == "linear":
-                            self._model_linear_correlation_effect(
-                                train_data=train_data,
-                                cov=cov,
-                                effects_list=z_transformed_correlation_effects,
-                            )
-                        elif cov.effect == "spline":
-                            self._model_spline_correlation_effect(
-                                train_data=train_data,
-                                cov=cov,
-                                effects_list=z_transformed_correlation_effects,
-                                spline_bases=spline_bases,
-                            )
-                    elif cov.cov_type == "categorical":
-                        self._model_categorical_correlation_effect(
-                            train_data=train_data,
-                            cov=cov,
-                            effects_list=z_transformed_correlation_effects,
-                            category_indices=category_indices,
-                        )
-
-                    else:
-                        err = (
-                            f"Invalid covariate type '{cov.cov_type}' for '{cov.name}'."
-                        )
-                        raise ValueError(err)
 
             # Combine all covariance effects
             self._combine_all_correlation_effects(
@@ -2411,6 +3106,82 @@ class CovarianceNormativeModel:
         # Save the model if a save path is provided
         if save_directory is not None:
             self.save_model(Path(save_directory))
+
+    def adapt_fit(
+        self,
+        covariate_to_adapt: str,
+        new_category_names: npt.NDArray[np.str_],
+        train_data: pd.DataFrame,
+        *,
+        pretrained_model_params: dict[str, Any] | None = None,
+        save_directory: Path | None = None,
+        progress_bar: bool = True,
+    ) -> None:
+        """
+        Using a previously fitted model, adapt the model to a new batch.
+        This method enables adaptation of the model to data from a new
+        batch/site by freezing all fitted parameters, and only estimating
+        new parameters for the new batch/site category.
+
+        Args:
+            covariate_to_adapt: str
+                Name of the categorical covariate representing the batch/site
+                to which the model should be adapted.
+                Note: This covariate must have been specified in the original
+                model.
+            new_category_names: list[str]
+                Names of the new categories in the covariate_to_adapt representing
+                the new batch/site labels (e.g. names of the new site).
+                Note: These names must not have been present in the original
+                fitted model.
+            train_data: pd.DataFrame
+                DataFrame containing the training data for adaptation.
+                It must include the variable of interest and all specified covariates.
+                Note: The covariate_to_adapt column must only contain the
+                new_category_names (no new data from previously trained batches).
+            pretrained_model_params: dict[str, Any] | None
+                The model parameters from a previously fitted model to adapt.
+                If None, the model parameters from the current instance will be used
+                (assuming fitting was done).
+            save_directory: Path | None
+                A path to a directory to save the adapted model. If provided,
+                the fitted model will be saved to this path.
+            progress_bar: bool
+                If True, display a progress bar during fitting. Defaults to True.
+        """
+        # Validation checks
+        self._validate_model()
+        self._validate_dataframe_for_fitting(train_data)
+
+        # Locate the covariate to adapt
+        cov_to_adapt_index = [cov.name for cov in self.spec.covariates].index(
+            covariate_to_adapt,
+        )
+
+        # Extend the covariate categories to include the new categories
+        self.spec.covariates[cov_to_adapt_index].extend_categories(new_category_names)
+
+        # Extract the pre-trained model parameters
+        if pretrained_model_params is None:
+            if not hasattr(self, "model_params") or self.model_params is None:
+                err = (
+                    "No pretrained model parameters found. "
+                    "Please provide pretrained_model_params or fit the model first."
+                )
+                raise ValueError(err)
+            pretrained_model_params = copy.deepcopy(self.model_params)
+
+        # Fit the adapted model
+        self.fit(
+            train_data,
+            save_directory=save_directory,
+            progress_bar=progress_bar,
+            adapt={
+                "covariate_to_adapt": covariate_to_adapt,
+                "new_category_names": new_category_names,
+                "pretrained_model_params": pretrained_model_params,
+            },
+        )
 
     def predict(
         self,
@@ -2448,8 +3219,10 @@ class CovarianceNormativeModel:
         utils.general.validate_dataframe(test_covariates, validation_columns)
 
         # Parameters
+        model_params = model_params or self.model_params
         if model_params is None:
-            model_params = self.model_params
+            err = "No model parameters found. Please provide model_params."
+            raise ValueError(err)
 
         # Posterior means
         posterior_means = model_params["posterior_means"]
@@ -2472,12 +3245,21 @@ class CovarianceNormativeModel:
                             )
                             raise ValueError(err)
                         z_transformed_correlation_estimate += (
-                            (test_covariates[cov.name].to_numpy() - cov.moments[0])
+                            (
+                                cast(
+                                    "npt.NDArray[Any]",
+                                    test_covariates[cov.name].to_numpy(),
+                                )
+                                - cov.moments[0]
+                            )
                             / cov.moments[1]
                         ) * posterior_means[f"linear_beta_{cov.name}"]
                     elif cov.effect == "spline":
                         spline_bases = cov.make_spline_bases(
-                            test_covariates[cov.name].to_numpy(),
+                            cast(
+                                "npt.NDArray[Any]",
+                                test_covariates[cov.name].to_numpy(),
+                            ),
                         )
                         spline_betas = posterior_means[f"spline_betas_{cov.name}"]
                         z_transformed_correlation_estimate += (
@@ -2485,7 +3267,7 @@ class CovarianceNormativeModel:
                         )
                 elif cov.cov_type == "categorical":
                     category_indices = cov.factorize_categories(
-                        test_covariates[cov.name].to_numpy(),
+                        cast("npt.NDArray[Any]", test_covariates[cov.name].to_numpy()),
                     )
                     categorical_intercept = None
                     if cov.hierarchical:
@@ -2804,6 +3586,7 @@ class SpectralNormativeModel:
         *,
         save_directory: Path | None = None,
         return_model_params: bool = True,
+        adapt: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """
         Fit a direct normative model for a single spectral eigenmode.
@@ -2821,6 +3604,9 @@ class SpectralNormativeModel:
                 Directory to save the fitted model. If None, the model is not saved.
             return_model_params: bool
                 If True, return the fitted model parameters.
+            adapt: dict[str, Any] | None
+                Adaptation parameters from a previously fitted model. If provided,
+                the model will be adapted using these parameters during fitting.
 
         Returns:
             dict:
@@ -2849,6 +3635,7 @@ class SpectralNormativeModel:
                 train_data=train_data,
                 save_directory=save_directory,
                 progress_bar=False,
+                adapt=adapt,
             )
 
         # Return the fitted model parameters if requested
@@ -2869,6 +3656,7 @@ class SpectralNormativeModel:
         save_directory: Path | None = None,
         return_model_params: bool = True,
         defaults_overwrite: dict[str, Any] | None = None,
+        adapt: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """
         Fit a covariance normative model between a single pair of eigenmodes.
@@ -2896,6 +3684,9 @@ class SpectralNormativeModel:
                 If True, return the fitted model parameters.
             defaults_overwrite: dict (default={})
                 Dictionary of default values to overwrite in the model fitting process.
+            adapt: dict[str, Any] | None = None
+                Adaptation parameters from a previously fitted model. If provided,
+                the model will be adapted using these parameters during fitting.
 
         Returns:
             dict:
@@ -2938,6 +3729,7 @@ class SpectralNormativeModel:
                 train_data=train_data,
                 save_directory=save_directory,
                 progress_bar=False,
+                adapt=adapt,
             )
 
         # Return the fitted model parameters if requested
@@ -2956,6 +3748,7 @@ class SpectralNormativeModel:
         n_jobs: int = -1,
         save_directory: Path | None = None,
         save_separate: bool = False,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Fit the direct models for all specified eigenmodes.
@@ -2982,6 +3775,9 @@ class SpectralNormativeModel:
                 Whether to save the fitted direct model parameters separately for each
                 eigenmode as individual files. This is only applicable if
                 `save_directory` is provided.
+            adapt: dict[str, Any] | None
+                Adaptation parameters from a previously fitted model. If provided,
+                the model will be adapted using these parameters during fitting.
         """
         # Setup the save directory if needed
         if save_directory is not None:
@@ -3006,6 +3802,17 @@ class SpectralNormativeModel:
                     if save_directory is not None and save_separate
                     else None
                 ),
+                adapt=(
+                    None
+                    if adapt is None
+                    else {
+                        "covariate_to_adapt": adapt["covariate_to_adapt"],
+                        "new_category_names": adapt["new_category_names"],
+                        "pretrained_model_params": adapt["pretrained_model_params"][
+                            "direct_model_params"
+                        ][i],
+                    }
+                ),
             )
             for i in range(n_modes)
         )
@@ -3017,6 +3824,75 @@ class SpectralNormativeModel:
             )(tasks),  # pyright: ignore[reportCallIssue]
         )
 
+    def identify_covariance_structure(
+        self,
+        encoded_train_data: npt.NDArray[np.floating[Any]],
+        covariates_dataframe: pd.DataFrame,
+        n_modes: int,
+        covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.5,
+        adapt: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Identify and set the sparse covariance structure for the spectral normative
+        model based on the provided training data and covariance structure input.
+
+        Args:
+            encoded_train_data: np.ndarray
+                Encoded training data as a numpy array (n_samples, n_modes).
+            covariates_dataframe: pd.DataFrame
+                DataFrame containing the covariates for the samples.
+            n_modes: int
+                Number of eigenmodes to consider.
+            covariance_structure: np.ndarray | float
+                Sparse covariance structure to use for the model fitting. If a
+                (2, n_pairs) array of row and column indices are provided, the model
+                will use this structure. If float, the model will estimate the
+                covariance structure based on the training data and the float value
+                will be used as the sparsity threshold for the number of covariance
+                pairs to keep proportional to the number of modes. Defaults to 0.5,
+                meaning that the number of modeled sparse covariance pairs will be
+                half the number of modes.
+            adapt: dict[str, Any] | None
+                Adaptation parameters from a previously fitted model. If provided,
+                the sparse covariance structure from the pretrained model parameters
+                will be used instead of estimating a new one.
+        """
+        if adapt is not None:
+            covariance_structure = adapt["pretrained_model_params"][
+                "sparse_covariance_structure"
+            ]
+
+        # Identify sparse covariance structure if a float value is given
+        if isinstance(covariance_structure, float):
+            # Use trained models to compute z-scores
+            encoded_train_z_scores = np.array(
+                [
+                    self.base_model.predict(
+                        test_covariates=covariates_dataframe,
+                        model_params=self.direct_model_params[x],
+                    )
+                    .extend_predictions(
+                        variable_of_interest=encoded_train_data[:, x],
+                    )
+                    .predictions["z-score"]
+                    for x in range(n_modes)
+                ],
+            ).T
+
+            self.sparse_covariance_structure = (
+                self.identify_sparse_covariance_structure(
+                    encoded_train_z_scores,
+                    covariance_structure,
+                )
+            )
+        else:
+            self.sparse_covariance_structure = np.array(covariance_structure)
+
+        # Verify that the covariance structure is valid
+        if not self._is_valid_covariance_structure(self.sparse_covariance_structure):
+            err = "Invalid sparse covariance structure."
+            raise ValueError(err)
+
     def fit_all_covariance(
         self,
         encoded_train_data: npt.NDArray[np.floating[Any]],
@@ -3025,6 +3901,7 @@ class SpectralNormativeModel:
         n_jobs: int = -1,
         save_directory: Path | None = None,
         save_separate: bool = False,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Fit the direct models for all specified eigenmodes.
@@ -3046,6 +3923,9 @@ class SpectralNormativeModel:
                 Whether to save the fitted direct model parameters separately for each
                 eigenmode as individual files. This is only applicable if
                 `save_directory` is provided.
+            adapt: dict[str, Any] | None
+                Adaptation parameters from a previously fitted model. If provided,
+                the model will be adapted using these parameters during fitting.
         """
         # Setup the save directory if needed
         if save_directory is not None:
@@ -3082,6 +3962,17 @@ class SpectralNormativeModel:
                     if save_directory is not None and save_separate
                     else None
                 ),
+                adapt=(
+                    None
+                    if adapt is None
+                    else {
+                        "covariate_to_adapt": adapt["covariate_to_adapt"],
+                        "new_category_names": adapt["new_category_names"],
+                        "pretrained_model_params": adapt["pretrained_model_params"][
+                            "covariance_model_params"
+                        ][i],
+                    }
+                ),
             )
             for i in range(self.sparse_covariance_structure.shape[0])
         )
@@ -3101,6 +3992,7 @@ class SpectralNormativeModel:
         save_directory: Path | None = None,
         save_separate: bool = False,
         covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.5,
+        adapt: dict[str, Any] | None = None,
     ) -> None:
         """
         Fit the spectral normative model to the provided encoded training data.
@@ -3136,6 +4028,10 @@ class SpectralNormativeModel:
                 pairs to keep proportional to the number of modes. Defaults to 0.5,
                 meaning that the number of modeled sparse covariance pairs will be
                 half the number of modes.
+            adapt: dict[str, Any] | None (default=None)
+                If provided, adapt a pre-trained model to a new covariate.
+                Note: We recommended using the `adapt_fit` method, and not directly
+                changing this argument, unless you know what you are doing.
         """
         logger.info("Starting SNM model fitting:")
         # Evaluate the number of modes to fit
@@ -3173,35 +4069,18 @@ class SpectralNormativeModel:
             n_jobs=n_jobs,
             save_directory=save_directory,
             save_separate=save_separate,
+            adapt=adapt,
         )
 
         logger.info("Step 2; identify sparse covariance structure")
 
-        # Identify sparse covariance structure if a float value is given
-        if isinstance(covariance_structure, float):
-            # Use trained models to compute z-scores
-            encoded_train_z_scores = np.array(
-                [
-                    self.base_model.predict(
-                        test_covariates=covariates_dataframe,
-                        model_params=self.direct_model_params[x],
-                    )
-                    .extend_predictions(
-                        variable_of_interest=encoded_train_data[:, x],
-                    )
-                    .predictions["z-score"]
-                    for x in range(n_modes)
-                ],
-            ).T
-
-            self.sparse_covariance_structure = (
-                self.identify_sparse_covariance_structure(
-                    encoded_train_z_scores,
-                    covariance_structure,
-                )
-            )
-        else:
-            self.sparse_covariance_structure = np.array(covariance_structure)
+        self.identify_covariance_structure(
+            encoded_train_data=encoded_train_data,
+            covariates_dataframe=covariates_dataframe,
+            n_modes=n_modes,
+            covariance_structure=covariance_structure,
+            adapt=adapt,
+        )
 
         # Verify that the covariance structure is valid
         if not self._is_valid_covariance_structure(self.sparse_covariance_structure):
@@ -3220,12 +4099,16 @@ class SpectralNormativeModel:
             n_jobs=n_jobs,
             save_directory=save_directory,
             save_separate=save_separate,
+            adapt=adapt,
         )
 
         # Save SNM model parameters
+        sample_size = encoded_train_data.shape[0]
+        if adapt is not None:
+            sample_size += adapt["pretrained_model_params"]["sample_size"]
         self.model_params = {
             "n_modes": n_modes,
-            "sample_size": encoded_train_data.shape[0],
+            "sample_size": sample_size,
             "direct_model_params": self.direct_model_params,
             "sparse_covariance_structure": self.sparse_covariance_structure,
             "covariance_model_params": self.covariance_model_params,
@@ -3241,6 +4124,94 @@ class SpectralNormativeModel:
         # Save the model if a save path is provided
         if save_directory is not None:
             self.save_model(save_directory)
+
+    def adapt_fit(
+        self,
+        covariate_to_adapt: str,
+        new_category_names: npt.NDArray[np.str_],
+        encoded_train_data: npt.NDArray[np.floating[Any]],
+        covariates_dataframe: pd.DataFrame,
+        *,
+        pretrained_model_params: dict[str, Any] | None = None,
+        n_jobs: int = -1,
+        save_directory: Path | None = None,
+        save_separate: bool = False,
+    ) -> None:
+        """
+        Using a previously fitted spectral normative model, adapt to a new
+        batch.
+        This method enables adaptation (fine-tuning) of the model to data
+        from a new batch/site by freezing all fitted parameters, and only
+        estimating new parameters for the new batch/site category.
+
+        Args:
+            covariate_to_adapt: str
+                Name of the categorical covariate representing the batch/site
+                to which the model should be adapted.
+                Note: This covariate must have been specified in the original
+                model.
+            new_category_names: list[str]
+                Names of the new categories in the covariate_to_adapt representing
+                the new batch/site labels (e.g. names of the new site).
+                Note: These names must not have been present in the original
+                fitted model.
+            encoded_train_data: np.ndarray
+                Encoded training data as a numpy array (n_samples, n_modes).
+            covariates_dataframe: pd.DataFrame
+                DataFrame containing the covariates for the samples.
+                It must include all specified covariates in the model specification.
+                Note: The covariate_to_adapt column must only contain the
+                new_category_names (no new data from previously trained batches).
+            pretrained_model_params: dict[str, Any] | None
+                The model parameters from a previously fitted model to adapt.
+                If None, the model parameters from the current instance will be used
+                (assuming fitting was done).
+            n_jobs: int (default=-1)
+                Number of parallel jobs to use for fitting the model. If -1, all
+                available CPU cores are used. If 1, no parallelization is used.
+            save_directory: Path | None
+                A path to a directory to save the adapted model. If provided,
+                the fitted model will be saved to this path.
+            save_separate: bool (default=False)
+                Whether to save the fitted direct model parameters separately for each
+                eigenmode as individual files. This is only applicable if
+                `save_directory` is provided.
+        """
+        # Locate the covariate to adapt
+        cov_to_adapt_index = [
+            cov.name for cov in self.base_model.spec.covariates
+        ].index(covariate_to_adapt)
+
+        # Extend the covariate categories to include the new categories
+        self.base_model.spec.covariates[cov_to_adapt_index].extend_categories(
+            new_category_names,
+        )
+
+        # Extract the pre-trained model parameters
+        if pretrained_model_params is None:
+            if not hasattr(self, "model_params") or self.model_params is None:
+                err = (
+                    "No pretrained model parameters found. "
+                    "Please provide pretrained_model_params or fit the model first."
+                )
+                raise ValueError(err)
+            pretrained_model_params = copy.deepcopy(self.model_params)
+
+        # Fit the adapted model
+        self.fit(
+            encoded_train_data,
+            covariates_dataframe,
+            n_modes=pretrained_model_params["n_modes"],
+            n_jobs=n_jobs,
+            save_directory=save_directory,
+            save_separate=save_separate,
+            covariance_structure=pretrained_model_params["sparse_covariance_structure"],
+            adapt={
+                "covariate_to_adapt": covariate_to_adapt,
+                "new_category_names": new_category_names,
+                "pretrained_model_params": pretrained_model_params,
+            },
+        )
 
     @staticmethod
     def _compute_single_std_estimate_from_spectral_estimates(

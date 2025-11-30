@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import joblib
 import numpy as np
+import pyamg  # type: ignore[import-untyped]  # Required for AMG Preconditioning
 from scipy import sparse
 
 if TYPE_CHECKING:
@@ -94,7 +95,7 @@ def compute_symmetric_normalized_laplacian_eigenmodes(
     lambdas, vectors = sparse.linalg.eigsh(
         normalized_matrix,
         k=num_eigenvalues + 1,
-        which="LM",
+        which="LA",  # type: ignore[call-overload]
     )
     # Note the largest eigenvalues of the adjacency matrix correspond to
     # the smallest eigenvalues of the Laplacian
@@ -106,6 +107,112 @@ def compute_symmetric_normalized_laplacian_eigenmodes(
     vectors = vectors[:, lambda_idx]
 
     return (lambdas, vectors.T)
+
+
+def compute_symmetric_normalized_laplacian_eigenmodes_amg_lobpcg(
+    adjacency_matrix: sparse.csr_matrix | npt.NDArray[np.floating[Any]],
+    num_eigenvalues: int = 100,
+    amg_cycles: int = 1,
+) -> tuple[
+    npt.NDArray[np.floating[Any]],
+    npt.NDArray[np.floating[Any]],
+    npt.NDArray[np.floating[Any]],
+]:
+    """
+    Compute the eigenvalues and eigenvectors of the Symmetric Normalized
+    Laplacian (:math:`L_{\text{sym}} = I - D^{-1/2} A D^{-1/2}`) using LOBPCG
+    with Algebraic Multigrid (AMG) preconditioning.
+
+    Note: this is a more advanced and efficient method for large graphs compared
+    to using `scipy.sparse.linalg.eigsh`.
+
+    Args:
+        adjacency_matrix: The adjacency matrix of the graph.
+        num_eigenvalues: Number of eigenvalues (modes) to compute.
+        amg_cycles: Number of V-cycles to use in the AMG preconditioner solve.
+
+    Returns:
+        eigenvalues, eigenvectors, degrees: (np.ndarray, np.ndarray, np.ndarray)
+            Eigenvalues and eigenvectors of L_sym, and the node degrees.
+    """
+    # Initialize the random number generator
+    rng = np.random.default_rng(42)
+
+    # 1. Preprocessing and Input Validation
+    adjacency_matrix = make_csr_matrix(adjacency_matrix)
+    n = adjacency_matrix.shape[0]
+
+    if num_eigenvalues >= n:
+        err = (
+            f"num_eigenvalues ({num_eigenvalues}) must be less than "
+            f"the number of nodes ({n})."
+        )
+        raise ValueError(err)
+
+    # Ensure the adjacency matrix is symmetric
+    adjacency_matrix = sparse.csr_matrix((adjacency_matrix + adjacency_matrix.T) * 0.5)
+
+    # Compute degrees and handle isolated nodes
+    degrees = np.asarray(adjacency_matrix.sum(axis=1)).flatten().astype(np.float64)
+    if np.any(degrees == 0):
+        err = "The adjacency matrix contains isolated nodes with zero degree."
+        raise ValueError(err)
+
+    # 2. Construct the Symmetric Normalized Laplacian (L_sym)
+    # L_sym = I - D^(-1/2) A D^(-1/2)
+    # The term D^(-1/2) A D^(-1/2) is the normalized adjacency matrix
+    symmetric_normalized_laplacian = sparse.identity(
+        adjacency_matrix.shape[0],
+        format="csr",
+    ) - perform_symmetric_normalization(adjacency_matrix)
+
+    # 3. Construct the AMG Preconditioner (M_amg)
+    # Build the Smoothed Aggregation Multigrid hierarchy on L_sym
+    ml = pyamg.smoothed_aggregation_solver(symmetric_normalized_laplacian)
+
+    # Create a LinearOperator that applies the V-cycle (the preconditioning step)
+    def preconditioner_matvec(
+        x: npt.NDArray[np.floating[Any]],
+    ) -> npt.NDArray[np.floating[Any]]:
+        # Solves L_sym * z = x approximately
+        z = ml.solve(x, cycle="V", maxiter=amg_cycles, tol=1e-8)
+        return np.asarray(z, dtype=x.dtype)
+
+    # M_amg is the preconditioner operator
+    m_amg = sparse.linalg.LinearOperator(
+        shape=tuple(symmetric_normalized_laplacian.shape),
+        matvec=preconditioner_matvec,
+        dtype=symmetric_normalized_laplacian.dtype,
+    )  # type: ignore[call-overload]
+
+    # 4. Solve the Eigenvalue Problem L_sym u = mu u using LOBPCG
+    block_size = num_eigenvalues + 1
+    # Random initial block of vectors
+    initial_block = rng.random(
+        (n, block_size),
+        dtype=symmetric_normalized_laplacian.dtype,
+    )
+
+    # We seek the smallest eigenvalues
+    # ("SA" - Smallest Algebraic), as L_sym eigenvalues are in [0, 2]
+    # Finding the smallest eigenvalues is crucial for spectral clustering/analysis.
+    lambdas, vectors = sparse.linalg.lobpcg(
+        A=symmetric_normalized_laplacian,
+        X=initial_block,
+        M=m_amg,  # The AMG Preconditioner
+        tol=1e-8,
+        maxiter=1000,
+        smallest=True,  # Find the eigenvalues closest to 0
+    )  # type: ignore[operator]
+
+    # 5. Sorting and Output
+    # Sort from smallest to largest L_sym eigenvalues
+    lambda_idx = np.argsort(lambdas)
+    lambdas = lambdas[lambda_idx]
+    vectors = vectors[:, lambda_idx]
+
+    # Return L_sym eigenvalues, L_sym eigenvectors, and degrees
+    return (lambdas, vectors.T, degrees)
 
 
 def convert_adjacency_to_transition_matrix(
@@ -134,14 +241,18 @@ def convert_adjacency_to_transition_matrix(
 
 
 def compute_random_walk_laplacian_eigenmodes(
-    adjacency_matrix: sparse.spmatrix | npt.NDArray[np.floating[Any]],
+    adjacency_matrix: sparse.csr_matrix | npt.NDArray[np.floating[Any]],
     num_eigenvalues: int = 100,
-) -> tuple[npt.NDArray[np.floating[Any]], npt.NDArray[np.floating[Any]]]:
+) -> tuple[
+    npt.NDArray[np.floating[Any]],
+    npt.NDArray[np.floating[Any]],
+    npt.NDArray[np.floating[Any]],
+]:
     """
     Compute the eigenvalues of the random walk Laplacian.
 
     Args:
-        adjacency_matrix: sparse.spmatrix
+        adjacency_matrix: sparse.csr_matrix
             The adjacency matrix of the graph.
         num_eigenvalues: int
             Number of eigenvalues to compute.
@@ -153,19 +264,35 @@ def compute_random_walk_laplacian_eigenmodes(
     # Convert to CSR format if in a different format
     adjacency_matrix = make_csr_matrix(adjacency_matrix)
 
+    # Check if num_eigenvalues is less than number of nodes
+    if num_eigenvalues >= adjacency_matrix.shape[0]:
+        err = (
+            f"num_eigenvalues ({num_eigenvalues}) must be less than "
+            f"the number of nodes ({adjacency_matrix.shape[0]})."
+        )
+        raise ValueError(err)
+
     # Ensure the adjacency matrix is symmetric
     adjacency_matrix = sparse.csr_matrix((adjacency_matrix + adjacency_matrix.T) * 0.5)
 
-    # Convert to transition matrix
-    transition_matrix = convert_adjacency_to_transition_matrix(adjacency_matrix)
+    # Compute the degree matrix
+    degrees = np.array(adjacency_matrix.sum(axis=1)).flatten().astype(np.float64)
 
+    # Ensure no zero degrees to avoid division by zero
+    if np.any(degrees == 0):
+        err = "The adjacency matrix contains isolated nodes with zero degree."
+        raise ValueError(err)
+
+    # No need to compute the transition matrix
+    # We can instead solve the generalized eigenvalue problem directly
     # Use shift invert mode to compute the eigenvalues for the transition matrix,
     # starting with the trivial eigenvalue 1
-    initial_vector = np.ones(adjacency_matrix.shape[0])
+    initial_vector = np.ones(adjacency_matrix.shape[0]) / adjacency_matrix.shape[0]
     lambdas, vectors = sparse.linalg.eigsh(
-        transition_matrix,
+        adjacency_matrix,
+        M=sparse.diags(degrees),  # The Mass matrix in A v = lambda M v
         k=num_eigenvalues + 1,
-        which="LM",
+        which="LA",  # type: ignore[call-overload]
         v0=initial_vector,
     )
 
@@ -175,7 +302,7 @@ def compute_random_walk_laplacian_eigenmodes(
     lambdas = lambdas[lambda_idx]
     vectors = vectors[:, lambda_idx]
 
-    return (lambdas, np.asarray(vectors).T)
+    return (lambdas, np.asarray(vectors).T, degrees)
 
 
 @dataclass
@@ -187,21 +314,28 @@ class EigenmodeBasis:
         eigenvalues: np.ndarray
             Eigenvalues of the Basis (n_modes,).
         eigenvectors: np.ndarray
-            Eigenvectors corresponding to the eigenvalues (n_modes, n_features).
+            Eigenvectors corresponding to the eigenvalues (n_features, n_modes).
+            This is the matrix :math:`\\Psi_{(k)} \\in \\mathbb{R}^{N_v \\times k}`
+            where k is the number of modes included in the basis.
+        mass_matrix: np.ndarray | sparse.csr_matrix | None
+            Mass matrix associated with the eigenmodes (optional). This can be used
+            in generalized eigenvalue problems (e.g. random walk Laplacian), in which
+            case the eigenmodes satisfy :math:`\\Psi^T M \\Psi = I`.
     """
 
     eigenvalues: npt.NDArray[np.floating[Any]]
     eigenvectors: npt.NDArray[np.floating[Any]]
+    mass_matrix: npt.NDArray[np.floating[Any]] | sparse.csr_matrix | None = None
 
     # Additional attributes
     def __post_init__(self) -> None:
         self.n_modes = self.eigenvalues.shape[0]
-        self.n_features = self.eigenvectors.shape[1]
+        self.n_features = self.eigenvectors.shape[0]
 
-        if self.eigenvectors.shape[0] != self.n_modes:
+        if self.eigenvectors.shape[1] != self.n_modes:
             err = (
                 f"Eigenvectors must have {self.n_modes} modes, "
-                f"got {self.eigenvectors.shape[0]}."
+                f"got {self.eigenvectors.shape[1]}."
             )
             raise ValueError(err)
 
@@ -210,6 +344,23 @@ class EigenmodeBasis:
         String representation of the EigenmodeBasis.
         """
         return f"EigenmodeBasis(n_modes={self.n_modes}, n_features={self.n_features})"
+
+    def inverted_eigenvectors(self) -> npt.NDArray[np.floating[Any]]:
+        """
+        Compute the inverse of the eigenvector matrix.
+
+        .. math::
+            \\Psi^{-1} = \\Psi^T M
+
+        Returns:
+            np.ndarray
+                Inverse of the eigenvector matrix (n_modes, n_features).
+        """
+        if self.mass_matrix is None:
+            # Standard eigenvalue problem
+            return self.eigenvectors.T
+        # Generalized eigenvalue problem (sparse @ dense is more efficient)
+        return (self.mass_matrix.T @ self.eigenvectors).T
 
     @classmethod
     def load(cls, filepath: str, mmap_mode: MmapMode | None = "r") -> EigenmodeBasis:
@@ -229,7 +380,11 @@ class EigenmodeBasis:
         data = joblib.load(filepath, mmap_mode=mmap_mode)
         # Expecting the saved file to contain a dict with these keys:
         # 'eigenvalues', 'eigenvectors'
-        return cls(eigenvalues=data["eigenvalues"], eigenvectors=data["eigenvectors"])
+        return cls(
+            eigenvalues=data["eigenvalues"],
+            eigenvectors=data["eigenvectors"],
+            mass_matrix=data.get("mass_matrix"),
+        )
 
     def save(
         self,
@@ -262,6 +417,7 @@ class EigenmodeBasis:
         data = {
             "eigenvalues": self.eigenvalues,
             "eigenvectors": self.eigenvectors,
+            "mass_matrix": self.mass_matrix,
         }
         joblib.dump(data, filepath, compress=compress)
 
@@ -289,13 +445,14 @@ class EigenmodeBasis:
             raise ValueError(err)
         if inplace:
             self.eigenvalues = self.eigenvalues[:n_modes]
-            self.eigenvectors = self.eigenvectors[:n_modes, :]
+            self.eigenvectors = self.eigenvectors[:, :n_modes]
             self.n_modes = n_modes
             return self
         # else return a new instance
         return EigenmodeBasis(
             eigenvalues=self.eigenvalues[:n_modes],
-            eigenvectors=self.eigenvectors[:n_modes, :],
+            eigenvectors=self.eigenvectors[:, :n_modes],
+            mass_matrix=self.mass_matrix,
         )
 
     def encode(
@@ -305,6 +462,13 @@ class EigenmodeBasis:
     ) -> npt.NDArray[np.floating[Any]]:
         """
         Encode a signal using the eigenmode basis.
+
+        Given an eigenmode set :math:`\\Psi` where :math:`L = \\Psi \\Lambda \\Psi^{-1}`
+        and a list of signals :math:`x`, the encoded signals :math:`\tilde{x}` are given
+        by:
+
+        .. math::
+            \\tilde{x} = \\Psi^{-1} x = \\Psi^T M x
 
         Args:
             signals: np.ndarray
@@ -325,7 +489,10 @@ class EigenmodeBasis:
         if n_modes is None:
             n_modes = self.n_modes
 
-        return signals @ self.eigenvectors[:n_modes].T
+        if self.mass_matrix is not None:
+            # Generalized eigenvalue problem
+            return signals @ (self.mass_matrix.T @ self.eigenvectors[:, :n_modes])
+        return signals @ self.eigenvectors[:, :n_modes]
 
     def decode(
         self,
@@ -333,7 +500,14 @@ class EigenmodeBasis:
         n_modes: int | None = None,
     ) -> npt.NDArray[np.floating[Any]]:
         """
-        Decode a signal from the eigenmode basis.
+        Decode encoded signals :math:`\tilde{x}` using the eigenmode basis.
+
+        Given an eigenmode set :math:`\\Psi` where :math:`L = \\Psi \\Lambda \\Psi^{-1}`
+        and a list of encoded signals :math:`\tilde{x}`, the decoded signals
+        :math:`\\hat{x}` are given by:
+
+        .. math::
+            \\hat{x} = \\Psi \\tilde{x}
 
         Args:
             encoded_signals: np.ndarray
@@ -364,66 +538,4 @@ class EigenmodeBasis:
             )
             raise ValueError(err)
 
-        return encoded_signals @ self.eigenvectors[:n_modes]
-
-    def load_and_encode_data_list(
-        self,
-        data_paths: list[str],
-        output_path: str | None,
-        n_modes: int | None = None,
-        data_loader: Callable[[str], npt.NDArray[np.floating[Any]]] = np.load,
-    ) -> npt.NDArray[np.floating[Any]]:
-        """
-        Load and encode a list of data using the eigenmode basis.
-
-        This function uses the data_loader to load data from the provided paths
-        (for each sample), and then encodes the data using the eigenmode basis.
-        Finally, it can save the encoded data to a specified output path, enabling
-        efficient reuse of the encoded data in subsequent analyses.
-
-        Args:
-            data_paths: list[str]
-                List of data identifier strings to load data using the data_loader.
-            output_path: str | None
-                Path to save the encoded data (as a .npy file). If None, the encoded
-                data is not saved.
-            n_modes: int | None
-                Number of modes to use for encoding. If None, all modes are used.
-            data_loader: Callable[[str], np.ndarray] = np.load
-
-        data_loader: Callable[[str], np.ndarray]
-            A callable function to load data from a string identifier (e.g., file path).
-            Note that by default, this is set to load numpy arrays from .npy files.
-            However, you may want to override this with a custom data loader
-            that fits your data format and loading requirements.
-
-            For instance, `snm.utils.nitools.compute_fslr_thickness` is an example of a
-            custom data loader which can be used to load fs-LR thickness values from a
-            path to a subject's FreeSurfer directory.
-
-            If you don't want to use a custom data loader, you can alternatively convert
-            all individual data files to numpy arrays and use the default data loader,
-            which loads numpy arrays from .npy files.
-
-        Returns:
-            np.ndarray: (n_samples, n_modes)
-                Encoded data of all individuals as a single numpy array.
-        """
-        if n_modes is None:
-            n_modes = self.n_modes
-        # Load and encode data
-        encoded_data = np.nan * np.zeros(
-            (len(data_paths), n_modes),
-            dtype=self.eigenvectors.dtype,
-        )
-        for i, data_path in enumerate(data_paths):
-            # Load (using data_loader) and Encode
-            encoded_data[i, :] = self.encode(
-                data_loader(data_path),
-                n_modes=n_modes,
-            )
-
-        if output_path is not None:
-            np.save(output_path, encoded_data)
-
-        return encoded_data
+        return encoded_signals @ self.eigenvectors[:, :n_modes].T

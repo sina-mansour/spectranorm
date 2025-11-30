@@ -222,7 +222,7 @@ def set_unique_pytensor_compiledir() -> None:
     # # must be set *before* importing pytensor
     import pytensor  # noqa: PLC0415
 
-    pytensor.config.compiledir = Path(unique_dir)  # type: ignore[attr-defined]
+    pytensor.config.compiledir = Path(unique_dir)  # pyright: ignore[reportPrivateImportUsage]
 
     # ensure directory exists
     Path(unique_dir).mkdir(parents=True, exist_ok=True)

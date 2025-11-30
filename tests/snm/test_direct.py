@@ -101,7 +101,7 @@ def test_model(mock_dataframe: Callable[..., pd.DataFrame], tmp_path: Path) -> N
 
     # Run evaluations
     predictions.evaluate_predictions(
-        variable_of_interest=df["voi"].to_numpy(),
+        variable_of_interest=df["voi"].to_numpy(dtype=np.float64),
         train_mean=np.asarray(df["voi"].mean()),
         train_std=np.asarray(df["voi"].std()),
         n_params=len(model.model_params),
