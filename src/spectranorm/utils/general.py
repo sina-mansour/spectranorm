@@ -6,11 +6,15 @@ General utility functions for spectranorm.
 
 from __future__ import annotations
 
+import atexit
 import datetime
 import logging
 import os
+import shutil
+import tempfile
 import time
-from contextlib import contextmanager
+import uuid
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Iterator
 
@@ -207,3 +211,24 @@ def suppress_output() -> Iterator[None]:
             os.dup2(old_stderr, 2)  # Restore
             os.close(old_stdout)
             os.close(old_stderr)
+
+
+def set_unique_pytensor_compiledir() -> None:
+    unique_dir = Path(
+        tempfile.gettempdir(),
+        f"spectranorm_pytensor_{uuid.uuid4().hex}",
+    )
+
+    # # must be set *before* importing pytensor
+    import pytensor  # noqa: PLC0415
+
+    pytensor.config.compiledir = Path(unique_dir)  # type: ignore[attr-defined]
+
+    # ensure directory exists
+    Path(unique_dir).mkdir(parents=True, exist_ok=True)
+
+    def _cleanup() -> None:
+        with suppress(Exception):
+            shutil.rmtree(unique_dir)
+
+    atexit.register(_cleanup)
