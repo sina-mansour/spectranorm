@@ -51,6 +51,7 @@ patsy = ">=1.0"
 pymc = ">=5.23"
 pytensor = ">=2.31"
 tqdm = ">=4.67"
+pyamg = ">=5.0"
 
 [tool.poetry.group.dev.dependencies]
 mkdocstrings = {version = ">=0.23", extras = ["python"]}
