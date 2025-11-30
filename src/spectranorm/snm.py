@@ -1151,7 +1151,7 @@ class DirectNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -1199,7 +1199,7 @@ class DirectNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -1264,7 +1264,7 @@ class DirectNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -1499,7 +1499,7 @@ class DirectNormativeModel:
                     f"variance_intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -1547,7 +1547,7 @@ class DirectNormativeModel:
                     f"variance_intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -1612,7 +1612,7 @@ class DirectNormativeModel:
                     f"variance_intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -2648,7 +2648,7 @@ class CovarianceNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -2696,7 +2696,7 @@ class CovarianceNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -2759,7 +2759,7 @@ class CovarianceNormativeModel:
                     f"intercept_{cov.name}",
                     (
                         categorical_intercept_offset
-                        * pt.reshape(sigma_intercept_category, (1,))
+                        * pt.reshape(sigma_intercept_category, (1,))  # pyright: ignore[reportPrivateImportUsage]
                     ),
                     dims=(cov.name,),
                 )
@@ -3476,18 +3476,21 @@ class SpectralNormativeModel:
 
     def _validate_fit_input(
         self,
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         n_modes: int,
     ) -> None:
         """
         Internal method to validate input data for fitting the spectral normative model.
         """
         # Validate the input data
-        if not isinstance(encoded_train_data, np.ndarray):
-            err = "encoded_train_data must be a numpy array."
+        if not isinstance(spectral_coeff_train_data, np.ndarray):
+            err = "spectral_coeff_train_data must be a numpy array."
             raise TypeError(err)
-        if encoded_train_data.shape[1] < n_modes:
-            err = f"encoded_train_data must have at least {n_modes} columns (n_modes)."
+        if spectral_coeff_train_data.shape[1] < n_modes:
+            err = (
+                f"spectral_coeff_train_data must have at least"
+                f" {n_modes} columns (n_modes)."
+            )
             raise ValueError(err)
         if self.eigenmode_basis.n_modes < n_modes:
             err = (
@@ -3503,8 +3506,8 @@ class SpectralNormativeModel:
     ) -> npt.NDArray[np.integer[Any]]:
         """
         Identify the sparse cross-basis covariance structure in the phenotype.
-        This method analyzes the encoded phenotype to determine the covariance
-        pairs that need to be modeled.
+        This method analyzes the phenotype's spectral coefficients to determine the
+        covariance pairs that need to be modeled.
 
         Note: if the batches become too small, this estimate can become less stable
         in which case it is recommended to provide the sparse covariance structure
@@ -3512,8 +3515,10 @@ class SpectralNormativeModel:
 
         Args:
             data: np.ndarray
-                The encoded training data representing the phenotype in the graph
-                frequency domain.
+                Spectral coefficients of training data representing the phenotype in
+                the graph frequency domain
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             sparsity_threshold: float
                 Number of strongest correlations to keep (proportional to the number
                 of modes). Defaults to 1, meaning that the number of sparse covariance
@@ -3741,7 +3746,7 @@ class SpectralNormativeModel:
 
     def fit_all_direct(
         self,
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_modes: int = -1,
@@ -3754,16 +3759,18 @@ class SpectralNormativeModel:
         Fit the direct models for all specified eigenmodes.
 
         Args:
-            encoded_train_data: np.ndarray
-                Encoded training data as a numpy array (n_samples, n_modes).
+            spectral_coeff_train_data: np.ndarray
+                Spectral coefficients of training data
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             covariates_dataframe: pd.DataFrame
                 DataFrame containing the covariates for the samples.
                 It must include all specified covariates in the model specification.
             n_modes: int (default=-1)
                 Number of eigenmodes to fit the model to. If -1, all modes are
                 used. If a positive integer, only the first n_modes are used.
-                Note that the encoded_train_data and the eigenmode basis should have
-                at least n_modes columns/eigenvectors.
+                Note that the spectral_coeff_train_data and the eigenmode basis should
+                have at least n_modes columns/eigenvectors.
             n_jobs: int (default=-1)
                 Number of parallel jobs to use for fitting the model. If -1, all
                 available CPU cores are used. If 1, no parallelization is used.
@@ -3790,7 +3797,7 @@ class SpectralNormativeModel:
         # Fit the base direct model for each eigenmode using parallel processing
         tasks = (
             joblib.delayed(self.fit_single_direct)(
-                variable_of_interest=encoded_train_data[:, i],
+                variable_of_interest=spectral_coeff_train_data[:, i],
                 covariates_dataframe=covariates_dataframe,
                 save_directory=(
                     utils.general.ensure_dir(
@@ -3826,7 +3833,7 @@ class SpectralNormativeModel:
 
     def identify_covariance_structure(
         self,
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         n_modes: int,
         covariance_structure: npt.NDArray[np.floating[Any]] | float = 0.5,
@@ -3837,8 +3844,10 @@ class SpectralNormativeModel:
         model based on the provided training data and covariance structure input.
 
         Args:
-            encoded_train_data: np.ndarray
-                Encoded training data as a numpy array (n_samples, n_modes).
+            spectral_coeff_train_data: np.ndarray
+                Spectral coefficients of training data
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             covariates_dataframe: pd.DataFrame
                 DataFrame containing the covariates for the samples.
             n_modes: int
@@ -3865,14 +3874,14 @@ class SpectralNormativeModel:
         # Identify sparse covariance structure if a float value is given
         if isinstance(covariance_structure, float):
             # Use trained models to compute z-scores
-            encoded_train_z_scores = np.array(
+            spectral_train_z_scores = np.array(
                 [
                     self.base_model.predict(
                         test_covariates=covariates_dataframe,
                         model_params=self.direct_model_params[x],
                     )
                     .extend_predictions(
-                        variable_of_interest=encoded_train_data[:, x],
+                        variable_of_interest=spectral_coeff_train_data[:, x],
                     )
                     .predictions["z-score"]
                     for x in range(n_modes)
@@ -3881,7 +3890,7 @@ class SpectralNormativeModel:
 
             self.sparse_covariance_structure = (
                 self.identify_sparse_covariance_structure(
-                    encoded_train_z_scores,
+                    spectral_train_z_scores,
                     covariance_structure,
                 )
             )
@@ -3895,7 +3904,7 @@ class SpectralNormativeModel:
 
     def fit_all_covariance(
         self,
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_jobs: int = -1,
@@ -3907,8 +3916,10 @@ class SpectralNormativeModel:
         Fit the direct models for all specified eigenmodes.
 
         Args:
-            encoded_train_data: np.ndarray
-                Encoded training data as a numpy array (n_samples, n_modes).
+            spectral_coeff_train_data: np.ndarray
+                Spectral coefficients of training data
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             covariates_dataframe: pd.DataFrame
                 DataFrame containing the covariates for the samples.
                 It must include all specified covariates in the model specification.
@@ -3934,11 +3945,11 @@ class SpectralNormativeModel:
         # Fit the base covariance models for selected eigenmode pairs in parallel
         tasks = (
             joblib.delayed(self.fit_single_covariance)(
-                variable_of_interest_1=encoded_train_data[
+                variable_of_interest_1=spectral_coeff_train_data[
                     :,
                     self.sparse_covariance_structure[i, 0],
                 ],
-                variable_of_interest_2=encoded_train_data[
+                variable_of_interest_2=spectral_coeff_train_data[
                     :,
                     self.sparse_covariance_structure[i, 1],
                 ],
@@ -3984,7 +3995,7 @@ class SpectralNormativeModel:
 
     def fit(
         self,
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         n_modes: int = -1,
@@ -3995,19 +4006,22 @@ class SpectralNormativeModel:
         adapt: dict[str, Any] | None = None,
     ) -> None:
         """
-        Fit the spectral normative model to the provided encoded training data.
+        Fit the spectral normative model to the provided spectral coefficient
+        training data.
 
         Args:
-            encoded_train_data: np.ndarray
-                Encoded training data as a numpy array (n_samples, n_modes).
+            spectral_coeff_train_data: np.ndarray
+                Spectral coefficients of training data
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             covariates_dataframe: pd.DataFrame
                 DataFrame containing the covariates for the samples.
                 It must include all specified covariates in the model specification.
             n_modes: int (default=-1)
                 Number of eigenmodes to fit the model to. If -1, all modes are
                 used. If a positive integer, only the first n_modes are used.
-                Note that the encoded_train_data and the eigenmode basis should have
-                at least n_modes columns/eigenvectors.
+                Note that the spectral_coeff_train_data and the eigenmode basis should
+                have at least n_modes columns/eigenvectors.
             n_jobs: int (default=-1)
                 Number of parallel jobs to use for fitting the model. If -1, all
                 available CPU cores are used. If 1, no parallelization is used.
@@ -4038,11 +4052,14 @@ class SpectralNormativeModel:
         if n_modes == -1:
             n_modes = self.eigenmode_basis.n_modes
         # Validate the input data
-        if not isinstance(encoded_train_data, np.ndarray):
-            err = "encoded_train_data must be a numpy array."
+        if not isinstance(spectral_coeff_train_data, np.ndarray):
+            err = "spectral_coeff_train_data must be a numpy array."
             raise TypeError(err)
-        if encoded_train_data.shape[1] < n_modes:
-            err = f"encoded_train_data must have at least {n_modes} columns (n_modes)."
+        if spectral_coeff_train_data.shape[1] < n_modes:
+            err = (
+                f"spectral_coeff_train_data must have at least {n_modes}"
+                " columns (n_modes)."
+            )
             raise ValueError(err)
         if self.eigenmode_basis.n_modes < n_modes:
             err = (
@@ -4063,7 +4080,7 @@ class SpectralNormativeModel:
         logger.info("Step 1; direct models for each eigenmode (%s modes)", n_modes)
 
         self.fit_all_direct(
-            encoded_train_data=encoded_train_data,
+            spectral_coeff_train_data=spectral_coeff_train_data,
             covariates_dataframe=covariates_dataframe,
             n_modes=n_modes,
             n_jobs=n_jobs,
@@ -4075,7 +4092,7 @@ class SpectralNormativeModel:
         logger.info("Step 2; identify sparse covariance structure")
 
         self.identify_covariance_structure(
-            encoded_train_data=encoded_train_data,
+            spectral_coeff_train_data=spectral_coeff_train_data,
             covariates_dataframe=covariates_dataframe,
             n_modes=n_modes,
             covariance_structure=covariance_structure,
@@ -4094,7 +4111,7 @@ class SpectralNormativeModel:
         )
 
         self.fit_all_covariance(
-            encoded_train_data=encoded_train_data,
+            spectral_coeff_train_data=spectral_coeff_train_data,
             covariates_dataframe=covariates_dataframe,
             n_jobs=n_jobs,
             save_directory=save_directory,
@@ -4103,7 +4120,7 @@ class SpectralNormativeModel:
         )
 
         # Save SNM model parameters
-        sample_size = encoded_train_data.shape[0]
+        sample_size = spectral_coeff_train_data.shape[0]
         if adapt is not None:
             sample_size += adapt["pretrained_model_params"]["sample_size"]
         self.model_params = {
@@ -4129,7 +4146,7 @@ class SpectralNormativeModel:
         self,
         covariate_to_adapt: str,
         new_category_names: npt.NDArray[np.str_],
-        encoded_train_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_train_data: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
         *,
         pretrained_model_params: dict[str, Any] | None = None,
@@ -4155,8 +4172,10 @@ class SpectralNormativeModel:
                 the new batch/site labels (e.g. names of the new site).
                 Note: These names must not have been present in the original
                 fitted model.
-            encoded_train_data: np.ndarray
-                Encoded training data as a numpy array (n_samples, n_modes).
+            spectral_coeff_train_data: np.ndarray
+                Spectral coefficients of training data
+                :math:`(T_{train} \\Psi_{(k)}) \\in R^{N_p \\times k}`
+                as a numpy array (n_samples, n_modes).
             covariates_dataframe: pd.DataFrame
                 DataFrame containing the covariates for the samples.
                 It must include all specified covariates in the model specification.
@@ -4199,7 +4218,7 @@ class SpectralNormativeModel:
 
         # Fit the adapted model
         self.fit(
-            encoded_train_data,
+            spectral_coeff_train_data,
             covariates_dataframe,
             n_modes=pretrained_model_params["n_modes"],
             n_jobs=n_jobs,
@@ -4586,7 +4605,7 @@ class SpectralNormativeModel:
         test_covariates: pd.DataFrame | None = None,
         extended: bool = False,
         model_params: dict[str, Any] | None = None,
-        encoded_test_data: npt.NDArray[np.floating[Any]] | None = None,
+        spectral_coeff_test_data: npt.NDArray[np.floating[Any]] | None = None,
         n_modes: int | None = None,
         predict_without: list[str] | None = None,
     ) -> NormativePredictions:
@@ -4601,12 +4620,12 @@ class SpectralNormativeModel:
             - The encoded query(ies) defining the variable(s) of interest.
 
         In addition, the method requires either:
-            - A dataframe of covariates (test_covariates) to be used for prediction
-              of a set of spectral predictions that will subsequently be combined to
-              apply the normative predictions for the encoded query(ies).
+            - A dataframe of covariates (test_covariates) to be used for inference
+              of a set of spectral predictions that will subsequently be combined
+              to yield the normative predictions for the encoded query(ies).
             OR
             - A dictionary of precomputed spectral predictions (spectral_predictions)
-              to be used for efficient normative predictions of the encoded query(ies).
+              to be used for efficiently predicting the encoded query(ies).
 
         The precomputed spectral predictions can be obtained using the
         'compute_spectral_predictions' function. This is particularly useful when
@@ -4635,14 +4654,15 @@ class SpectralNormativeModel:
                 hence not required.
             extended: bool (default: False)
                 If True, return additional stats such as log-likelihood, centiles, etc.
-                Note that extended predictions require encoded_test_data to be
+                Note that extended predictions require spectral_coeff_test_data to be
                 provided in addition to the covariates.
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
-            encoded_test_data: np.ndarray | None
-                Optional encoded test data for the phenotype being modeled (only
-                required for extended predictions).
+            spectral_coeff_test_data: np.ndarray | None
+                Optional spectral coefficient of test data for the phenotype being
+                modeled :math:`(T_{test} \\Psi_{(k)}) \\in R^{N_{test} \\times k}`
+                (only required for extended predictions).
                 Expects a numpy array (n_samples, n_modes)
             n_modes: int | None
                 Optional number of modes to use for the prediction. If not provided,
@@ -4707,12 +4727,15 @@ class SpectralNormativeModel:
 
         # Check if extended predictions are requested
         if extended:
-            if encoded_test_data is None:
-                err = "Extended predictions require encoded_test_data to be provided."
+            if spectral_coeff_test_data is None:
+                err = (
+                    "Extended predictions require spectral_coeff_test_data"
+                    " to be provided."
+                )
                 raise ValueError(err)
             # Add extended statistics to predictions (e.g. centiles, log-loss, etc.)
             predictions.extend_predictions(
-                variable_of_interest=encoded_test_data @ encoded_query,
+                variable_of_interest=spectral_coeff_test_data @ encoded_query,
             )
 
         return predictions
@@ -4721,7 +4744,7 @@ class SpectralNormativeModel:
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
         test_covariates: pd.DataFrame,
-        encoded_test_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_test_data: npt.NDArray[np.floating[Any]],
         query_train_moments: npt.NDArray[np.floating[Any]] | None = None,
         model_params: dict[str, Any] | None = None,
         n_modes: int | None = None,
@@ -4739,9 +4762,11 @@ class SpectralNormativeModel:
             test_covariates: pd.DataFrame
                 DataFrame containing the new covariate data to predict.
                 This must include all specified covariates.
-            encoded_test_data: np.ndarray | None
-                Encoded test data for the phenotype being modeled. Expects a numpy array
-                of shape: (n_test, n_modes).
+            spectral_coeff_test_data: np.ndarray | None
+                Spectral coefficient of test data for the phenotype being modeled
+                :math:`(T_{test} \\Psi_{(k)}) \\in R^{N_{test} \\times k}`
+                (only required for extended predictions).
+                Expects a numpy array (n_samples, n_modes)
             query_train_moments: np.ndarray | None
                 A (2, n_queries) array containing the query moments (mean, std) directly
                 measured in the training data. While optional, providing these moments
@@ -4780,7 +4805,7 @@ class SpectralNormativeModel:
             test_covariates=test_covariates,
             extended=True,
             model_params=model_params,
-            encoded_test_data=encoded_test_data,
+            spectral_coeff_test_data=spectral_coeff_test_data,
             n_modes=n_modes,
         )
         if query_train_moments is None:
@@ -4790,12 +4815,12 @@ class SpectralNormativeModel:
             )
             query_train_moments = np.array(
                 [
-                    np.mean(encoded_test_data @ encoded_query, axis=0),
-                    np.std(encoded_test_data @ encoded_query, axis=0, ddof=1),
+                    np.mean(spectral_coeff_test_data @ encoded_query, axis=0),
+                    np.std(spectral_coeff_test_data @ encoded_query, axis=0, ddof=1),
                 ],
             )
         return predictions.evaluate_predictions(
-            variable_of_interest=encoded_test_data @ encoded_query,
+            variable_of_interest=spectral_coeff_test_data @ encoded_query,
             train_mean=query_train_moments[0],
             train_std=query_train_moments[1],
             n_params=model_params["n_params"],
@@ -4805,7 +4830,7 @@ class SpectralNormativeModel:
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
         covariates_dataframe: pd.DataFrame,
-        encoded_data: npt.NDArray[np.floating[Any]],
+        spectral_coeff_data: npt.NDArray[np.floating[Any]],
         covariates_to_harmonize: list[str],
         *,
         model_params: dict[str, Any] | None = None,
@@ -4830,9 +4855,11 @@ class SpectralNormativeModel:
                 DataFrame containing covariate information for the data to harmonize.
                 This must include all specified covariates. The dataframe is expected
                 to have all covariates as columns and samples as rows.
-            encoded_data: np.ndarray | None
-                Encoded data for the variable(s) of interest being modeled. Expects a
-                numpy array of shape: (n_samples, n_modes).
+            spectral_coeff_data: np.ndarray | None
+                Spectral coefficient of the the phenotype being modeled
+                :math:`(T \\Psi_{(k)}) \\in R^{N_{p} \\times k}`
+                (only required for extended predictions).
+                Expects a numpy array (n_samples, n_modes)
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
@@ -4876,7 +4903,7 @@ class SpectralNormativeModel:
 
         # First standardize the variable of interest based on the full model
         vois_standardized = (
-            encoded_data - full_predictions.predictions["mu_estimate"]
+            spectral_coeff_data - full_predictions.predictions["mu_estimate"]
         ) / full_predictions.predictions["std_estimate"]
 
         # Then return the harmonized values based on the reduced model
