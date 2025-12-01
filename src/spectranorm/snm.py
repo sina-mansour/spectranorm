@@ -4042,6 +4042,11 @@ class SpectralNormativeModel:
                 pairs to keep proportional to the number of modes. Defaults to 0.5,
                 meaning that the number of modeled sparse covariance pairs will be
                 half the number of modes.
+                Note: If using a small number of nodes, it is advisable to increase
+                the sparsity threshold to ensure a stable estimation of the covariance
+                structure. In contrast, when using a large number of nodes, a lower
+                sparsity threshold should be used to ensure sparse modeling of the
+                covariance structure.
             adapt: dict[str, Any] | None (default=None)
                 If provided, adapt a pre-trained model to a new covariate.
                 Note: We recommended using the `adapt_fit` method, and not directly
