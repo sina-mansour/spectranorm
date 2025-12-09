@@ -202,7 +202,7 @@ def compute_symmetric_normalized_laplacian_eigenmodes_amg_lobpcg(
         M=m_amg,  # The AMG Preconditioner
         tol=1e-8,
         maxiter=1000,
-        smallest=True,  # Find the eigenvalues closest to 0
+        largest=False,  # Find the eigenvalues closest to 0
     )  # type: ignore[operator]
 
     # 5. Sorting and Output
