@@ -26,7 +26,6 @@ import patsy
 import pymc as pm  # type: ignore[import-untyped]
 import pytensor.tensor as pt
 from pytensor.compile.sharedvalue import shared
-from scipy import sparse
 
 from . import utils
 
@@ -517,11 +516,21 @@ class CovariateSpec:
             err = f"Covariate '{self.name}' is not a spline covariate."
             raise ValueError(err)
 
+        # Create fixed set of knots if not already defined
+        if self.spline_spec.knots is None:
+            knots = np.linspace(
+                self.spline_spec.lower_bound,
+                self.spline_spec.upper_bound,
+                self.spline_spec.df - self.spline_spec.degree + 1,
+            )[1:-1].tolist()
+        else:
+            knots = self.spline_spec.knots
+
         # Create B-spline basis functions
         return np.array(
             patsy.bs(  # pyright: ignore[reportAttributeAccessIssue]
                 values,
-                knots=self.spline_spec.knots,
+                knots=knots,
                 df=self.spline_spec.df,
                 degree=self.spline_spec.degree,
                 lower_bound=self.spline_spec.lower_bound,
@@ -4237,43 +4246,6 @@ class SpectralNormativeModel:
             },
         )
 
-    @staticmethod
-    def _compute_single_std_estimate_from_spectral_estimates(
-        encoded_query: npt.NDArray[np.floating[Any]],
-        eigenmode_std_estimates: npt.NDArray[np.floating[Any]],
-        rho_estimates: npt.NDArray[np.floating[Any]],
-        row_indices: npt.NDArray[np.integer[Any]],
-        col_indices: npt.NDArray[np.integer[Any]],
-    ) -> npt.NDArray[np.floating[Any]]:
-        """
-        Internal method to compute a standard deviation estimate for a single sample.
-        """
-        # Build sparse correlation matrix
-        sparse_correlations = sparse.coo_matrix(
-            (
-                rho_estimates,  # sparse data values
-                (row_indices, col_indices),  # row, column indices
-            ),
-            shape=(eigenmode_std_estimates.shape[0], eigenmode_std_estimates.shape[0]),
-        ).tocsr()
-        # Make it symmetric
-        sparse_correlations = sparse_correlations + sparse_correlations.T
-        # Set diagonal to 1
-        sparse_correlations.setdiag(np.array(1))
-        # Weight mode stds by encoding
-        weighted_mode_stds = (
-            np.asarray(eigenmode_std_estimates).reshape(-1, 1) * encoded_query
-        )
-        # Compute the variance estimate
-        return np.asarray(
-            np.sqrt(
-                np.sum(
-                    weighted_mode_stds * (sparse_correlations @ weighted_mode_stds),
-                    axis=0,
-                ),
-            ),
-        )
-
     def _predict_from_spectral_estimates(
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
@@ -4298,28 +4270,51 @@ class SpectralNormativeModel:
         # Load sparse covariance structure
         row_indices = model_params["sparse_covariance_structure"][:, 0]
         col_indices = model_params["sparse_covariance_structure"][:, 1]
+
         # Select indices that are both within n_modes
         corr_index_valid = (row_indices < n_modes) & (col_indices < n_modes)
 
-        # Estimate query variance for each sample
-        tasks = (
-            joblib.delayed(self._compute_single_std_estimate_from_spectral_estimates)(
-                encoded_query,
-                eigenmode_std_estimates[sample_idx],
-                rho_estimates[sample_idx, corr_index_valid],
-                row_indices[corr_index_valid],
-                col_indices[corr_index_valid],
+        # Mask valid values
+        valid_rho_estimates = rho_estimates[:, corr_index_valid]
+        valid_row_indices = row_indices[corr_index_valid]
+        valid_col_indices = col_indices[corr_index_valid]
+
+        # number of dimensions
+        n_samples = eigenmode_mu_estimates.shape[0]
+        n_queries = encoded_query.shape[1]
+
+        # Pre-compute squared encoded query
+        # to have shape of (n_modes, n_queries)
+        # Avoids recomputing for every sample
+        encoded_query_squared = encoded_query**2
+
+        # Empty matrix to fill in loop
+        sample_query_stds = np.empty((n_samples, n_queries), dtype=rho_estimates.dtype)
+
+        # Implement the equivalent of sparse matrix multiplications methodically
+        # to avoid large memory consumption and optimize speed
+        # sparse multiplication requires (n_samples, n_modes, n_queries) memory
+        for sample_idx in range(n_samples):
+            # Build weighted mode stds on the fly — small memory (n_modes, n_queries)
+            weighted_mode_stds_sample = (
+                eigenmode_std_estimates[sample_idx, :, None] * encoded_query
             )
-            for sample_idx in range(eigenmode_mu_estimates.shape[0])
-        )
-        results = list(
-            utils.parallel.ParallelTqdm(
-                n_jobs=-1,
-                total_tasks=eigenmode_mu_estimates.shape[0],
-                desc="Computing std estimates",
-            )(tasks),  # pyright: ignore[reportCallIssue]
-        )
-        predictions_dict["std_estimate"] = np.array(results)
+
+            # diagonal term (within mode variances)
+            diagonal_term = (
+                eigenmode_std_estimates[sample_idx] ** 2
+            ) @ encoded_query_squared
+            # off-diagonal term (cross-mode covariances)
+            # weighted stds for valid pairs (n_edges, n_queries)
+            weighted_mode_stds_sample_row = weighted_mode_stds_sample[valid_row_indices]
+            weighted_mode_stds_sample_col = weighted_mode_stds_sample[valid_col_indices]
+            off_diagonal_term = 2 * (
+                valid_rho_estimates[sample_idx, :, None]
+                * (weighted_mode_stds_sample_row * weighted_mode_stds_sample_col)
+            ).sum(axis=0)
+            sample_query_stds[sample_idx] = np.sqrt(diagonal_term + off_diagonal_term)
+
+        predictions_dict["std_estimate"] = sample_query_stds
 
         # Create a the predictions object
         return NormativePredictions(predictions=predictions_dict)
@@ -4710,6 +4705,11 @@ class SpectralNormativeModel:
                 "Both test_covariates and spectral_predictions are provided."
                 " Ignoring test_covariates and using spectral_predictions.",
             )
+            if predict_without is not None:
+                logger.warning(
+                    "predict_without is ignored when spectral_predictions"
+                    " are provided directly.",
+                )
 
         # Unpack spectral predictions
         self._validate_spectral_predictions(spectral_predictions)
@@ -4717,8 +4717,9 @@ class SpectralNormativeModel:
         eigenmode_std_estimates = spectral_predictions["eigenmode_std_estimates"]
         rho_estimates = spectral_predictions["rho_estimates"]
 
-        # reformat encoded queries
-        encoded_query = np.asarray(encoded_query[:n_modes]).reshape(n_modes, -1)
+        # Reformat encoded queries (for efficiency)
+        encoded_query = np.asarray(encoded_query[:n_modes])
+        encoded_query = encoded_query.reshape(n_modes, -1, order="F")
 
         # Compute the predictions
         predictions = self._predict_from_spectral_estimates(
@@ -4748,8 +4749,10 @@ class SpectralNormativeModel:
     def evaluate(
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
-        test_covariates: pd.DataFrame,
         spectral_coeff_test_data: npt.NDArray[np.floating[Any]],
+        *,
+        spectral_predictions: dict[str, npt.NDArray[np.floating[Any]]] | None = None,
+        test_covariates: pd.DataFrame | None = None,
         query_train_moments: npt.NDArray[np.floating[Any]] | None = None,
         model_params: dict[str, Any] | None = None,
         n_modes: int | None = None,
@@ -4764,14 +4767,24 @@ class SpectralNormativeModel:
                 Can be provided as:
                 - shape = (n_modes) for a single query vector
                 - shape = (n_modes, n_queries) for multiple queries predicted at once
-            test_covariates: pd.DataFrame
-                DataFrame containing the new covariate data to predict.
-                This must include all specified covariates.
             spectral_coeff_test_data: np.ndarray | None
                 Spectral coefficient of test data for the phenotype being modeled
                 :math:`(T_{test} \\Psi_{(k)}) \\in R^{N_{test} \\times k}`
                 (only required for extended predictions).
                 Expects a numpy array (n_samples, n_modes)
+            spectral_predictions: dict | None
+                Optional dictionary of precomputed spectral predictions to use for
+                the evaluation. If not provided, test_covariates must be provided
+                instead to compute the spectral predictions.
+                The dictionary should contain:
+                - 'eigenmode_mu_estimates': np.ndarray (n_samples, n_modes)
+                - 'eigenmode_std_estimates': np.ndarray (n_samples, n_modes)
+                - 'rho_estimates': np.ndarray (n_samples, n_covariance_pairs)
+                This can be obtained using the 'compute_spectral_predictions' method.
+            test_covariates: pd.DataFrame | None
+                DataFrame containing the new covariate data to predict.
+                This must include all specified covariates.
+                Note: This is only required if spectral_predictions was not provided.
             query_train_moments: np.ndarray | None
                 A (2, n_queries) array containing the query moments (mean, std) directly
                 measured in the training data. While optional, providing these moments
@@ -4807,6 +4820,7 @@ class SpectralNormativeModel:
         # Run extended predictions
         predictions = self.predict(
             encoded_query=encoded_query,
+            spectral_predictions=spectral_predictions,
             test_covariates=test_covariates,
             extended=True,
             model_params=model_params,
@@ -4834,10 +4848,14 @@ class SpectralNormativeModel:
     def harmonize(
         self,
         encoded_query: npt.NDArray[np.floating[Any]],
-        covariates_dataframe: pd.DataFrame,
         spectral_coeff_data: npt.NDArray[np.floating[Any]],
-        covariates_to_harmonize: list[str],
         *,
+        covariates_to_harmonize: list[str] | None = None,
+        covariates_dataframe: pd.DataFrame | None = None,
+        spectral_predictions_full: dict[str, npt.NDArray[np.floating[Any]]]
+        | None = None,
+        spectral_predictions_partial: dict[str, npt.NDArray[np.floating[Any]]]
+        | None = None,
         model_params: dict[str, Any] | None = None,
         n_modes: int | None = None,
     ) -> npt.NDArray[np.floating[Any]]:
@@ -4846,25 +4864,65 @@ class SpectralNormativeModel:
         certain covariates (e.g. batch). This method uses the spectral normative model
         to harmonize one or several variables of interest defined by the encoded query.
 
+        The harmonization method can be used in two ways:
+        - By providing a dataframe of covariates (covariates_dataframe) to compute the
+          necessary spectral predictions for both the full model (all covariates)
+          and the partial model (excluding covariates to harmonize). In this format,
+          you should also provide the covariates_to_harmonize (list of covariate names).
+        - By providing precomputed spectral predictions for both the full and partial
+          models (spectral_predictions_full and spectral_predictions_partial). In this
+          format, the partial spectral predictions should have been computed by
+          excluding the covariates to harmonize using the predict_without parameter in
+          the compute_spectral_predictions method.
+          Note: In the latter, the method will not use the covariates_to_harmonize list.
+
         Args:
             encoded_query: np.ndarray
                 Encoded query data defining the normative variable of interest.
                 Can be provided as:
                 - shape = (n_modes) for a single query vector
                 - shape = (n_modes, n_queries) for multiple queries predicted at once
-            covariates_to_harmonize: list[str]
+            spectral_coeff_data: np.ndarray | None
+                Spectral coefficient of the the phenotype being modeled
+                :math:`(T \\Psi_{(k)}) \\in R^{N_{p} \\times k}`.
+                Expects a numpy array (n_samples, n_modes)
+            covariates_to_harmonize: list[str] | None
                 List of covariate names to harmonize.
                 The partial effects of these covariates will be removed from the
                 variable of interest, and the harmonized values will be returned.
-            covariates_dataframe: pd.DataFrame
+                Note: This is only required if spectral_predictions_full and
+                spectral_predictions_partial were not provided.
+            covariates_dataframe: pd.DataFrame | None
                 DataFrame containing covariate information for the data to harmonize.
                 This must include all specified covariates. The dataframe is expected
                 to have all covariates as columns and samples as rows.
-            spectral_coeff_data: np.ndarray | None
-                Spectral coefficient of the the phenotype being modeled
-                :math:`(T \\Psi_{(k)}) \\in R^{N_{p} \\times k}`
-                (only required for extended predictions).
-                Expects a numpy array (n_samples, n_modes)
+                Note: This is only required if spectral_predictions_full and
+                spectral_predictions_partial were not provided. Alternatively,
+                if any of the aforementioned spectral predictions were previously
+                computed, then they could be passed to this method to avoid
+                recomputation.
+            spectral_predictions_full: dict | None
+                Optional dictionary of precomputed spectral predictions to use for
+                the harmonization. If not provided, covariates_dataframe must be
+                provided instead to compute the spectral predictions.
+                These predictions use all set of covariates.
+                The dictionary should contain:
+                - 'eigenmode_mu_estimates': np.ndarray (n_samples, n_modes)
+                - 'eigenmode_std_estimates': np.ndarray (n_samples, n_modes)
+                - 'rho_estimates': np.ndarray (n_samples, n_covariance_pairs)
+                This can be obtained using the 'compute_spectral_predictions' method.
+            spectral_predictions_partial: dict | None
+                Optional dictionary of precomputed spectral predictions to use for
+                the harmonization. If not provided, covariates_dataframe must be
+                provided instead to compute the partial spectral predictions.
+                These predictions use all set of covariates except those to harmonize.
+                The covariates to harmonize need to be partialed out using the
+                predict_without parameter.
+                The dictionary should contain:
+                - 'eigenmode_mu_estimates': np.ndarray (n_samples, n_modes)
+                - 'eigenmode_std_estimates': np.ndarray (n_samples, n_modes)
+                - 'rho_estimates': np.ndarray (n_samples, n_covariance_pairs)
+                This can be obtained using the 'compute_spectral_predictions' method.
             model_params: dict | None
                 Optional dictionary of model parameters to use. If not provided,
                 the stored parameters from model.fit() will be used.
@@ -4876,9 +4934,19 @@ class SpectralNormativeModel:
             npt.NDArray[np.floating[Any]]: Array of harmonized values for the
                 variable of interest.
         """
-        # Validate the new data
-        validation_columns = [cov.name for cov in self.base_model.spec.covariates]
-        utils.general.validate_dataframe(covariates_dataframe, validation_columns)
+        if (spectral_predictions_full is None) or (
+            spectral_predictions_partial is None
+        ):
+            if (covariates_dataframe is None) or (covariates_to_harmonize is None):
+                err = (
+                    "Either [covariates_dataframe and covariates_to_harmonize] or "
+                    "both spectral_predictions_full "
+                    "and spectral_predictions_partial must be provided."
+                )
+                raise ValueError(err)
+            # Validate the new data
+            validation_columns = [cov.name for cov in self.base_model.spec.covariates]
+            utils.general.validate_dataframe(covariates_dataframe, validation_columns)
 
         # Find n_modes
         if n_modes is None:
@@ -4891,6 +4959,7 @@ class SpectralNormativeModel:
         # Predict the mean and std with all covariates
         full_predictions = self.predict(
             encoded_query=encoded_query,
+            spectral_predictions=spectral_predictions_full,
             test_covariates=covariates_dataframe,
             model_params=model_params,
             n_modes=n_modes,
@@ -4900,15 +4969,19 @@ class SpectralNormativeModel:
         # Predict the mean and std without the covariates to harmonize
         reduced_predictions = self.predict(
             encoded_query=encoded_query,
+            spectral_predictions=spectral_predictions_partial,
             test_covariates=covariates_dataframe,
             model_params=model_params,
             n_modes=n_modes,
             predict_without=covariates_to_harmonize,
         )
 
+        # Reconstruct observed phenotype for query from spectral coefficients
+        observed_phenotype = spectral_coeff_data @ encoded_query[:, :n_modes].T
+
         # First standardize the variable of interest based on the full model
         vois_standardized = (
-            spectral_coeff_data - full_predictions.predictions["mu_estimate"]
+            observed_phenotype - full_predictions.predictions["mu_estimate"]
         ) / full_predictions.predictions["std_estimate"]
 
         # Then return the harmonized values based on the reduced model
