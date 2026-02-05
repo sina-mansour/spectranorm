@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import joblib
 import numpy as np
@@ -31,11 +31,13 @@ def make_csr_matrix(
     """
     Ensure the input matrix is in CSR format.
     """
-    if not sparse.issparse(matrix):
-        matrix = sparse.csr_matrix(np.array(matrix))
-    if not sparse.isspmatrix_csr(matrix):
-        matrix = sparse.csr_matrix(matrix)
-    return matrix
+    if sparse.issparse(matrix):
+        # SciPy sparse matrices have a .tocsr() method which is the
+        # preferred way to convert/ensure CSR format.
+        return cast("sparse.csr_matrix", matrix.tocsr())
+
+    # If it's not sparse, it's a dense array; convert it directly.
+    return sparse.csr_matrix(np.asarray(matrix))
 
 
 def perform_symmetric_normalization(

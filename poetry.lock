@@ -988,6 +988,7 @@ description = "joblib stubs"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
+markers = "python_version == \"3.10\""
 files = [
     {file = "joblib_stubs-1.5.2.0.20250831-py3-none-any.whl", hash = "sha256:2b75f04fbb98975d207cc3d7b686c538ee1b2a749cb63c035ce41ff97a0eb4bc"},
     {file = "joblib_stubs-1.5.2.0.20250831.tar.gz", hash = "sha256:1b419c5b5238cbfd2759ef2e463ae3399ba1d3a6cbdc213a9ac339e6312b21ef"},
@@ -999,6 +1000,26 @@ typing-extensions = ">=4.4.0"
 [package.extras]
 mypy = ["mypy (>=1.17.1)"]
 mypy-strict = ["mypy (==1.17.1)", "mypy (>=1.17.1)"]
+
+[[package]]
+name = "joblib-stubs"
+version = "1.5.3.1.20260117"
+description = "joblib stubs"
+optional = false
+python-versions = ">=3.11"
+groups = ["dev"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "joblib_stubs-1.5.3.1.20260117-py3-none-any.whl", hash = "sha256:ef9f570617b232263c8166f5b4351a5dcc90669d8b07e7e2cd7b25c3b0f26d5f"},
+    {file = "joblib_stubs-1.5.3.1.20260117.tar.gz", hash = "sha256:d420f9e26636df01e1bda851bf5bce9a8dbd6db84f08afe1dfdb963e6651e724"},
+]
+
+[package.dependencies]
+typing-extensions = ">=4.4.0"
+
+[package.extras]
+mypy = ["mypy (>=1.19.1)"]
+mypy-strict = ["mypy (==1.19.1)", "mypy (>=1.19.1)"]
 
 [[package]]
 name = "kiwisolver"
@@ -2008,19 +2029,36 @@ xml = ["lxml (>=4.9.2)"]
 
 [[package]]
 name = "pandas-stubs"
-version = "2.3.2.250926"
+version = "2.3.3.260113"
 description = "Type annotations for pandas"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
+markers = "python_version == \"3.10\""
 files = [
-    {file = "pandas_stubs-2.3.2.250926-py3-none-any.whl", hash = "sha256:81121818453dcfe00f45c852f4dceee043640b813830f6e7bd084a4ef7ff7270"},
-    {file = "pandas_stubs-2.3.2.250926.tar.gz", hash = "sha256:c64b9932760ceefb96a3222b953e6a251321a9832a28548be6506df473a66406"},
+    {file = "pandas_stubs-2.3.3.260113-py3-none-any.whl", hash = "sha256:ec070b5c576e1badf12544ae50385872f0631fc35d99d00dc598c2954ec564d3"},
+    {file = "pandas_stubs-2.3.3.260113.tar.gz", hash = "sha256:076e3724bcaa73de78932b012ec64b3010463d377fa63116f4e6850643d93800"},
 ]
 
 [package.dependencies]
 numpy = ">=1.23.5"
 types-pytz = ">=2022.1.1"
+
+[[package]]
+name = "pandas-stubs"
+version = "3.0.0.260204"
+description = "Type annotations for pandas"
+optional = false
+python-versions = ">=3.11"
+groups = ["dev"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "pandas_stubs-3.0.0.260204-py3-none-any.whl", hash = "sha256:5ab9e4d55a6e2752e9720828564af40d48c4f709e6a2c69b743014a6fcb6c241"},
+    {file = "pandas_stubs-3.0.0.260204.tar.gz", hash = "sha256:bf9294b76352effcffa9cb85edf0bed1339a7ec0c30b8e1ac3d66b4228f1fbc3"},
+]
+
+[package.dependencies]
+numpy = ">=1.23.5"
 
 [[package]]
 name = "pathspec"
@@ -2848,22 +2886,22 @@ scipy = ["scipy (>=1.15.3,<1.16)"]
 
 [[package]]
 name = "scipy-stubs"
-version = "1.16.3.1"
+version = "1.17.0.2"
 description = "Type annotations for SciPy"
 optional = false
 python-versions = ">=3.11"
 groups = ["dev"]
 markers = "python_version >= \"3.11\""
 files = [
-    {file = "scipy_stubs-1.16.3.1-py3-none-any.whl", hash = "sha256:69bc52ef6c3f8e09208abdfaf32291eb51e9ddf8fa4389401ccd9473bdd2a26d"},
-    {file = "scipy_stubs-1.16.3.1.tar.gz", hash = "sha256:0738d55a7f8b0c94cdb8063f711d53330ebefe166f7d48dec9ffd932a337226d"},
+    {file = "scipy_stubs-1.17.0.2-py3-none-any.whl", hash = "sha256:99d1aa75b7d72a7ee36a68d18bcf1149f62ab577bbd1236c65c471b3b465d824"},
+    {file = "scipy_stubs-1.17.0.2.tar.gz", hash = "sha256:3981bd7fa4c189a8493307afadaee1a830d9a0de8e3ae2f4603f192b6260ef2a"},
 ]
 
 [package.dependencies]
-optype = {version = ">=0.14.0,<0.15", extras = ["numpy"]}
+optype = {version = ">=0.14.0,<0.16", extras = ["numpy"]}
 
 [package.extras]
-scipy = ["scipy (>=1.16.3,<1.17)"]
+scipy = ["scipy (>=1.17.0,<1.18)"]
 
 [[package]]
 name = "semver"
@@ -3086,6 +3124,7 @@ description = "Typing stubs for pytz"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
+markers = "python_version == \"3.10\""
 files = [
     {file = "types_pytz-2025.2.0.20251108-py3-none-any.whl", hash = "sha256:0f1c9792cab4eb0e46c52f8845c8f77cf1e313cb3d68bf826aa867fe4717d91c"},
     {file = "types_pytz-2025.2.0.20251108.tar.gz", hash = "sha256:fca87917836ae843f07129567b74c1929f1870610681b4c92cb86a3df5817bdb"},
@@ -3108,14 +3147,14 @@ urllib3 = ">=2"
 
 [[package]]
 name = "types-tqdm"
-version = "4.67.0.20250809"
+version = "4.67.2.20260202"
 description = "Typing stubs for tqdm"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "types_tqdm-4.67.0.20250809-py3-none-any.whl", hash = "sha256:1a73053b31fcabf3c1f3e2a9d5ecdba0f301bde47a418cd0e0bdf774827c5c57"},
-    {file = "types_tqdm-4.67.0.20250809.tar.gz", hash = "sha256:02bf7ab91256080b9c4c63f9f11b519c27baaf52718e5fdab9e9606da168d500"},
+    {file = "types_tqdm-4.67.2.20260202-py3-none-any.whl", hash = "sha256:01b31780b2a2cdad8465a3e53a06fdf53a47abab0d46d69c1b2039197ffd55b0"},
+    {file = "types_tqdm-4.67.2.20260202.tar.gz", hash = "sha256:c3c494ae8dfd2946fa1fe089ce6931a85bb88d9078da0d65c6b99b6643f7561d"},
 ]
 
 [package.dependencies]
