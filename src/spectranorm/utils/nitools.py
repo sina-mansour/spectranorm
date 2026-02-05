@@ -45,18 +45,16 @@ def load_gifti_surface(
     """
     Load a GIfTI surface file.
 
-    Parameters
-    ----------
-    file : Path
-        Path to the GIfTI surface file to be loaded (.gii).
+    Args:
+        file: Path
+            Path to the GIfTI surface file to be loaded (.gii).
 
-    Returns
-    -------
-    vertices : numpy.ndarray
-        Array of shape (n_vertices, 3) containing vertex coordinates.
-    triangles : numpy.ndarray
-        Array of shape (n_triangles, 3) containing vertex indices for each triangular
-        face.
+    Returns:
+        vertices: numpy.ndarray
+            Array of shape (n_vertices, 3) containing vertex coordinates.
+        triangles: numpy.ndarray
+            Array of shape (n_triangles, 3) containing vertex indices for each
+            triangular face.
     """
     gifti_data = cast("nib.gifti.gifti.GiftiImage", nib.loadsave.load(file))
     vertices = gifti_data.darrays[0].data
@@ -70,18 +68,16 @@ def load_freesurfer_surface(
     """
     Load a FreeSurfer surface file.
 
-    Parameters
-    ----------
-    file : str
-        Path to the FreeSurfer surface file to be loaded.
+    Args:
+        file: str
+            Path to the FreeSurfer surface file to be loaded.
 
-    Returns
-    -------
-    vertices : numpy.ndarray
-        Array of shape (n_vertices, 3) containing vertex coordinates.
-    triangles : numpy.ndarray
-        Array of shape (n_triangles, 3) containing vertex indices for each triangular
-        face.
+    Returns:
+        vertices: numpy.ndarray
+            Array of shape (n_vertices, 3) containing vertex coordinates.
+        triangles: numpy.ndarray
+            Array of shape (n_triangles, 3) containing vertex indices for each
+            triangular face.
     """
     surface = nib.freesurfer.io.read_geometry(file)  # type: ignore[no-untyped-call]
     vertices = np.asarray(surface[0], dtype=np.float32)
@@ -96,18 +92,16 @@ def get_euler_number(
     """
     Calculate the Euler number of a surface.
 
-    Parameters
-    ----------
-    vertices : numpy.ndarray
-        Array of shape (n_vertices, 3) containing vertex coordinates.
-    triangles : numpy.ndarray
-        Array of shape (n_triangles, 3) containing vertex indices for each triangular
-        face.
+    Args:
+        vertices: numpy.ndarray
+            Array of shape (n_vertices, 3) containing vertex coordinates.
+        triangles: numpy.ndarray
+            Array of shape (n_triangles, 3) containing vertex indices for each
+            triangular face.
 
-    Returns
-    -------
-    euler_number : int
-        The Euler number of the surface.
+    Returns:
+        euler_number: int
+            The Euler number of the surface.
     """
     # Euler characteristic: V - E + F = 2 for closed surfaces
     # where V = number of vertices, E = number of edges, F = number of faces
@@ -140,18 +134,17 @@ def compute_vertex_areas(
     """
     Compute the surface area of each vertex in a triangular mesh.
 
-    Parameters
-    ----------
-    vertices : numpy.ndarray
-        Array of shape (n_vertices, 3) containing vertex coordinates.
-    triangles : numpy.ndarray
-        Array of shape (n_triangles, 3) containing vertex indices for each triangular
-        face.
+    Args:
+        vertices: numpy.ndarray
+            Array of shape (n_vertices, 3) containing vertex coordinates.
+        triangles: numpy.ndarray
+            Array of shape (n_triangles, 3) containing vertex indices for each
+            triangular face.
 
-    Returns
-    -------
-    vertex_areas : numpy.ndarray
-        Array of shape (n_vertices,) containing the area associated with each vertex.
+    Returns:
+        vertex_areas: numpy.ndarray
+            Array of shape (n_vertices,) containing the area associated with each
+            vertex.
     """
     # Compute the area of each triangle
     v0 = vertices[triangles[:, 0]]
@@ -180,23 +173,22 @@ def compute_barycentric_transformation(
     Compute sparse barycentric transformation matrix from target_vertices to
     source_vertices.
 
-    Parameters
-    ----------
-    source_vertices : numpy.ndarray
-        Array of shape (N1, 3) containing the coordinates of the source vertices.
-    source_triangles : numpy.ndarray
-        Array of shape (M1, 3) containing the indices of the source triangles.
-    target_vertices : numpy.ndarray
-        Array of shape (N2, 3) containing the coordinates of the target vertices.
-    k_candidates : int
-        Number of candidate triangles to consider for each target vertex. (default: 10)
-    tol : float
-        Tolerance for inside-triangle check. (default: 1e-10)
+    Args:
+        source_vertices: numpy.ndarray
+            Array of shape (N1, 3) containing the coordinates of the source vertices.
+        source_triangles: numpy.ndarray
+            Array of shape (M1, 3) containing the indices of the source triangles.
+        target_vertices: numpy.ndarray
+            Array of shape (N2, 3) containing the coordinates of the target vertices.
+        k_candidates: int
+            Number of candidate triangles to consider for each target vertex.
+            (default: 10)
+        tol: float
+            Tolerance for inside-triangle check. (default: 1e-10)
 
-    Returns
-    -------
-    barycentric_transformation : scipy.sparse.csr_matrix
-        Sparse matrix of shape (N2, N1) representing the barycentric transformation.
+    Returns:
+        barycentric_transformation: scipy.sparse.csr_matrix
+            Sparse matrix of shape (N2, N1) representing the barycentric transformation.
     """
     # Compute source triangle centroids
     source_triangle_centroids = np.mean(source_vertices[source_triangles], axis=1)
@@ -296,31 +288,29 @@ def compute_adaptive_area_barycentric_transformation(
     Computes an adaptive area barycentric transformation matrix from the source mesh to
     the target mesh (similar to workbench command's ADAP_BARY_AREA option).
 
-    Parameters
-    ----------
-    source_vertices : np.ndarray
-        Array of shape (N1, 3) containing the coordinates of the source vertices.
-    source_triangles : np.ndarray
-        Array of shape (M1, 3) containing the indices of the source triangles.
-    source_vertex_areas : np.ndarray
-        Array of shape (N1,) containing the areas of the source vertices.
-    target_vertices : np.ndarray
-        Array of shape (N2, 3) containing the coordinates of the target vertices.
-    target_triangles : np.ndarray
-        Array of shape (M2, 3) containing the indices of the target triangles.
-    target_vertex_areas : np.ndarray
-        Array of shape (N2,) containing the areas of the target vertices.
-    source_vertex_mask : np.ndarray | None
-        (N1,) Optional mask for source vertices.
-    k_candidates : int
-        Number of candidate triangles to consider for each target vertex.
-    tol : float
-        Tolerance for barycentric coordinate computation.
+    Args:
+        source_vertices: np.ndarray
+            Array of shape (N1, 3) containing the coordinates of the source vertices.
+        source_triangles: np.ndarray
+            Array of shape (M1, 3) containing the indices of the source triangles.
+        source_vertex_areas: np.ndarray
+            Array of shape (N1,) containing the areas of the source vertices.
+        target_vertices: np.ndarray
+            Array of shape (N2, 3) containing the coordinates of the target vertices.
+        target_triangles: np.ndarray
+            Array of shape (M2, 3) containing the indices of the target triangles.
+        target_vertex_areas: np.ndarray
+            Array of shape (N2,) containing the areas of the target vertices.
+        source_vertex_mask: np.ndarray | None
+            (N1,) Optional mask for source vertices.
+        k_candidates: int
+            Number of candidate triangles to consider for each target vertex.
+        tol: float
+            Tolerance for barycentric coordinate computation.
 
-    Returns
-    -------
-    sparse.csr_matrix
-        Sparse matrix of shape (N2, N1) representing the transformation.
+    Returns:
+        sparse.csr_matrix
+            Sparse matrix of shape (N2, N1) representing the transformation.
     """
     # --- Step 1: Compute forward and reverse barycentric transformations ---
     forward_transform = compute_barycentric_transformation(
@@ -400,15 +390,14 @@ def compute_fsnative_to_fslr32k_transformation(
     Note: This function combines the vertices across left and right hemispheres
     to create a unified transformation matrix (left first, then right).
 
-    Parameters
-    ----------
-    subject_freesurfer_directory : str
-        Path to the FreeSurfer subject directory.
+    Args:
+        subject_freesurfer_directory: str
+            Path to the FreeSurfer subject directory.
 
-    Returns
-    -------
-    sparse.csr_matrix
-        Sparse matrix representing the transformation from fsnative space to fs_LR-32k.
+    Returns:
+        sparse.csr_matrix
+            Sparse matrix representing the transformation from fsnative space to
+            fs_LR-32k.
     """
     # Load fs_LR 32k files
     left_fslr_sphere_vertices, left_fslr_triangles = load_gifti_surface(
@@ -521,15 +510,13 @@ def get_fslr_surface_indices_from_cifti(
     """
     Get the fs_LR surface indices from a CIFTI file (excluding the medial wall).
 
-    Parameters
-    ----------
-    cifti_file : str
-        Path to the CIFTI file. By default a ones.dscalar.nii template will be used.
+    Args:
+        cifti_file: str
+            Path to the CIFTI file. By default a ones.dscalar.nii template will be used.
 
-    Returns
-    -------
-    np.ndarray
-        The indices indicating of vertices present in the CIFTI format.
+    Returns:
+        np.ndarray
+            The indices indicating of vertices present in the CIFTI format.
     """
     # Use default ones.dscalar.nii if no file is provided
     if cifti_file is None:
@@ -573,16 +560,14 @@ def compute_fslr_thickness(
     maps thickness estimates from subject's native cortical surface space onto the
     standard fs_LR space.
 
-    Parameters
-    ----------
-    subject_freesurfer_directory : str
-        Path to the FreeSurfer subject directory.
+    Args:
+        subject_freesurfer_directory: str
+            Path to the FreeSurfer subject directory.
 
-    Returns
-    -------
-    np.ndarray
-        Array of shape (59412,) containing the thickness values for fs_LR vertices
-        (excluding the medial wall).
+    Returns:
+        np.ndarray
+            Array of shape (59412,) containing the thickness values for fs_LR vertices
+            (excluding the medial wall).
     """
     cifti_mask = get_fslr_surface_indices_from_cifti()
     adap_area_barycentric_transformation = compute_fsnative_to_fslr32k_transformation(
@@ -606,15 +591,13 @@ def compute_total_euler_number(subject_freesurfer_directory: str) -> int:
     Compute the total Euler number from FreeSurfer output directory.
     Note: This function assumes FreeSurfer's recon-all is completed.
 
-    Parameters
-    ----------
-    subject_freesurfer_directory : str
-        Path to the FreeSurfer subject directory.
+    Args:
+        subject_freesurfer_directory: str
+            Path to the FreeSurfer subject directory.
 
-    Returns
-    -------
-    int
-        The total Euler number (sum over left and right surfaces).
+    Returns:
+        int
+            The total Euler number (sum over left and right surfaces).
     """
     left_surface = f"{subject_freesurfer_directory}/surf/lh.orig.nofix"
     right_surface = f"{subject_freesurfer_directory}/surf/rh.orig.nofix"
