@@ -32,9 +32,9 @@ def make_csr_matrix(
     Ensure the input matrix is in CSR format.
     """
     if sparse.issparse(matrix):
-        # SciPy sparse matrices have a .tocsr() method which is the
-        # preferred way to convert/ensure CSR format.
-        return cast("sparse.csr_matrix", matrix.tocsr())
+        # We cast to Any briefly to tell Mypy:
+        # I've already verified this is sparse, let me call .tocsr()
+        return cast("sparse.csr_matrix", cast("Any", matrix).tocsr())
 
     # If it's not sparse, it's a dense array; convert it directly.
     return sparse.csr_matrix(np.asarray(matrix))
