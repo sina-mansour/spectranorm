@@ -4312,7 +4312,14 @@ class SpectralNormativeModel:
                 valid_rho_estimates[sample_idx, :, None]
                 * (weighted_mode_stds_sample_row * weighted_mode_stds_sample_col)
             ).sum(axis=0)
-            sample_query_stds[sample_idx] = np.sqrt(diagonal_term + off_diagonal_term)
+            # avoid negative values due to numerical issues
+            # if it happens, ignore off-diagonal term
+            try:
+                sample_query_stds[sample_idx] = np.sqrt(
+                    diagonal_term + off_diagonal_term,
+                )
+            except RuntimeWarning:
+                sample_query_stds[sample_idx] = np.sqrt(diagonal_term)
 
         predictions_dict["std_estimate"] = sample_query_stds
 
@@ -4814,8 +4821,9 @@ class SpectralNormativeModel:
         if model_params is None:
             model_params = self.model_params
 
-        # reformat encoded queries
-        encoded_query = np.asarray(encoded_query[:n_modes]).reshape(n_modes, -1)
+        # Reformat encoded queries (for efficiency)
+        encoded_query = np.asarray(encoded_query[:n_modes])
+        encoded_query = encoded_query.reshape(n_modes, -1, order="F")
 
         # Run extended predictions
         predictions = self.predict(
@@ -4956,6 +4964,10 @@ class SpectralNormativeModel:
         if model_params is None:
             model_params = self.model_params
 
+        # Reformat encoded queries (for efficiency)
+        encoded_query = np.asarray(encoded_query[:n_modes])
+        encoded_query = encoded_query.reshape(n_modes, -1, order="F")
+
         # Predict the mean and std with all covariates
         full_predictions = self.predict(
             encoded_query=encoded_query,
@@ -4977,7 +4989,7 @@ class SpectralNormativeModel:
         )
 
         # Reconstruct observed phenotype for query from spectral coefficients
-        observed_phenotype = spectral_coeff_data @ encoded_query[:, :n_modes].T
+        observed_phenotype = spectral_coeff_data @ encoded_query[:n_modes]
 
         # First standardize the variable of interest based on the full model
         vois_standardized = (
@@ -4992,3 +5004,76 @@ class SpectralNormativeModel:
             ),
             dtype=np.float64,
         )
+
+    def reduce_model(
+        self,
+        n_modes: int,
+        *,
+        inplace: bool = False,
+    ) -> SpectralNormativeModel:
+        """
+        Create a reduced spectral normative model using only the first n_modes.
+
+        Args:
+            n_modes: int
+                Number of modes to retain in the reduced model. Must be less than or
+                equal to the current number of modes considered by the model.
+            inplace: bool (default: False)
+                If True, modify the current model instance to reduce its modes. If
+                False, return a new SpectralNormativeModel instance with the reduced
+                modes.
+        Returns:
+            SpectralNormativeModel
+                A new SpectralNormativeModel instance with reduced number of modes.
+        """
+        if (n_modes > self.eigenmode_basis.n_modes) or (
+            hasattr(self, "model_params") and n_modes > self.model_params["n_modes"]
+        ):
+            available_modes = self.eigenmode_basis.n_modes
+            if hasattr(self, "model_params"):
+                available_modes = min(available_modes, self.model_params["n_modes"])
+            err = f"Cannot reduce to {n_modes} modes, only {available_modes} available."
+            raise ValueError(err)
+
+        # Create a reduced eigenbasis
+        reduced_eigenbasis = self.eigenmode_basis.reduce(n_modes)
+
+        if inplace:
+            return_model = self
+            return_model.eigenmode_basis = reduced_eigenbasis
+        else:
+            return_model = SpectralNormativeModel(
+                base_model=self.base_model,
+                eigenmode_basis=reduced_eigenbasis,
+            )
+            return_model.model_params = self.model_params  # Copy model parameters
+
+        # Update model parameters to reflect reduced modes
+        if hasattr(self, "model_params"):
+            new_model_params: dict[str, Any] = {}
+            new_model_params["n_modes"] = n_modes
+            new_model_params["sample_size"] = self.model_params["sample_size"]
+            new_model_params["direct_model_params"] = self.model_params[
+                "direct_model_params"
+            ][:n_modes]
+            valid_cov_indices = np.where(
+                (
+                    return_model.model_params["sparse_covariance_structure"][:, 0]
+                    < n_modes
+                )
+                & (
+                    return_model.model_params["sparse_covariance_structure"][:, 1]
+                    < n_modes
+                ),
+            )[0]
+            new_model_params["sparse_covariance_structure"] = return_model.model_params[
+                "sparse_covariance_structure"
+            ][valid_cov_indices]
+            new_model_params["covariance_model_params"] = [
+                return_model.model_params["covariance_model_params"][i]
+                for i in valid_cov_indices
+            ]
+            new_model_params["n_params"] = self.model_params.get("n_params", None)
+            return_model.model_params = new_model_params
+
+        return return_model
