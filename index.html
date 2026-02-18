@@ -12,18 +12,18 @@
       
       
       
-        <link rel="next" href="api_docs/">
+        <link rel="next" href="tutorials/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="favicon.ico">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
-        <title>Spectranorm</title>
+        <title>SpectraNorm</title>
       
     
     
@@ -51,6 +51,8 @@
     
       <link rel="stylesheet" href="assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
     <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -67,7 +69,7 @@
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="deep-orange">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -92,10 +94,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="Spectranorm" class="md-header__button md-logo" aria-label="Spectranorm" data-md-component="logo">
+    <a href="." title="SpectraNorm" class="md-header__button md-logo" aria-label="SpectraNorm" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M120 56c0-30.9 25.1-56 56-56h24c17.7 0 32 14.3 32 32v448c0 17.7-14.3 32-32 32h-32c-29.8 0-54.9-20.4-62-48h-2c-44.2 0-80-35.8-80-80 0-18 6-34.6 16-48-19.4-14.6-32-37.8-32-64 0-30.9 17.6-57.8 43.2-71.1-7.1-12-11.2-26-11.2-40.9 0-44.2 35.8-80 80-80zm272 0v24c44.2 0 80 35.8 80 80 0 15-4.1 29-11.2 40.9C486.5 214.2 504 241 504 272c0 26.2-12.6 49.4-32 64 10 13.4 16 30 16 48 0 44.2-35.8 80-80 80h-2c-7.1 27.6-32.2 48-62 48h-32c-17.7 0-32-14.3-32-32V32c0-17.7 14.3-32 32-32h24c30.9 0 56 25.1 56 56"/></svg>
+  <img src="assets/logo-with-text-horizontal.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -106,13 +107,13 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Spectranorm
+            SpectraNorm
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Introduction
+              Home
             
           </span>
         </div>
@@ -125,7 +126,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
@@ -135,7 +136,7 @@
     
     
     
-    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
@@ -228,13 +229,12 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="Spectranorm" class="md-nav__button md-logo" aria-label="Spectranorm" data-md-component="logo">
+    <a href="." title="SpectraNorm" class="md-nav__button md-logo" aria-label="SpectraNorm" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M120 56c0-30.9 25.1-56 56-56h24c17.7 0 32 14.3 32 32v448c0 17.7-14.3 32-32 32h-32c-29.8 0-54.9-20.4-62-48h-2c-44.2 0-80-35.8-80-80 0-18 6-34.6 16-48-19.4-14.6-32-37.8-32-64 0-30.9 17.6-57.8 43.2-71.1-7.1-12-11.2-26-11.2-40.9 0-44.2 35.8-80 80-80zm272 0v24c44.2 0 80 35.8 80 80 0 15-4.1 29-11.2 40.9C486.5 214.2 504 241 504 272c0 26.2-12.6 49.4-32 64 10 13.4 16 30 16 48 0 44.2-35.8 80-80 80h-2c-7.1 27.6-32.2 48-62 48h-32c-17.7 0-32-14.3-32-32V32c0-17.7 14.3-32 32-32h24c30.9 0 56 25.1 56 56"/></svg>
+  <img src="assets/logo-with-text-horizontal.svg" alt="logo">
 
     </a>
-    Spectranorm
+    SpectraNorm
   </label>
   
     <div class="md-nav__source">
@@ -274,7 +274,7 @@
   <span class="md-ellipsis">
     
   
-    Introduction
+    Home
   
 
     
@@ -292,7 +292,7 @@
   <span class="md-ellipsis">
     
   
-    Introduction
+    Home
   
 
     
@@ -329,63 +329,35 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#development" class="md-nav__link">
+  <a href="#getting-started" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Development">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#testing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Testing
+        Getting Started
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#api-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Documentation
+        API Reference
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#releasing" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#dig-deeper" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Releasing
+        Dig Deeper
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pre-commit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pre-commit
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -403,15 +375,64 @@
   
   
   
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
-      <a href="api_docs/" class="md-nav__link">
+      <a href="tutorials/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    API
+    Overview
   
 
     
@@ -423,9 +444,431 @@
     </li>
   
 
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tutorials/univariate_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Univariate Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tutorials/eigenmode_bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eigenmode Bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tutorials/spectral_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
     
       
       
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/snm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core SNM Functionality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Utilities
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/general/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/gsp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Signal Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/nitools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neuroimaging Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/parallel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/utils/stats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statistics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
   
   
   
@@ -439,6 +882,41 @@
     
   
     Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="license/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    License
   
 
     
@@ -489,63 +967,35 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#development" class="md-nav__link">
+  <a href="#getting-started" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Development">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#testing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Testing
+        Getting Started
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#api-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Documentation
+        API Reference
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#releasing" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#dig-deeper" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Releasing
+        Dig Deeper
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pre-commit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pre-commit
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -569,62 +1019,22 @@
   
 
 
-<h1 id="spectranorm">spectranorm</h1>
+<h1 id="spectranorm">SpectraNorm</h1>
+<p>A Python package for spectral normative modeling of high-dimensional data.</p>
 <p><a href="https://pypi.python.org/pypi/spectranorm/"><img alt="PyPI" src="https://img.shields.io/pypi/v/spectranorm?style=flat-square" /></a>
 <a href="https://pypi.python.org/pypi/spectranorm/"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/spectranorm?style=flat-square" /></a>
-<a href="https://pypi.python.org/pypi/spectranorm/"><img alt="PyPI - License" src="https://img.shields.io/pypi/l/spectranorm?style=flat-square" /></a>
+<a href="https://raw.githubusercontent.com/sina-mansour/spectranorm/refs/heads/main/LICENSE"><img alt="PyPI - License" src="https://img.shields.io/pypi/l/spectranorm?style=flat-square" /></a>
 <a href="https://github.com/woltapp/wolt-python-package-cookiecutter"><img alt="Coookiecutter - Wolt" src="https://img.shields.io/badge/cookiecutter-Wolt-00c2e8?style=flat-square&amp;logo=cookiecutter&amp;logoColor=D4AA00&amp;link=https://github.com/woltapp/wolt-python-package-cookiecutter" /></a></p>
-<hr />
-<p><strong>Documentation</strong>: <a href="https://sina-mansour.github.io/spectranorm">https://sina-mansour.github.io/spectranorm</a></p>
-<p><strong>Source Code</strong>: <a href="https://github.com/sina-mansour/spectranorm">https://github.com/sina-mansour/spectranorm</a></p>
-<p><strong>PyPI</strong>: <a href="https://pypi.org/project/spectranorm/">https://pypi.org/project/spectranorm/</a></p>
-<hr />
-<p>A Python package for spectral normative modeling of neuroimaging and other high-dimensional data.</p>
 <h2 id="installation">Installation</h2>
-<pre><code class="language-sh">pip install spectranorm
-</code></pre>
-<h2 id="development">Development</h2>
-<ul>
-<li>Clone this repository</li>
-<li>Requirements:</li>
-<li><a href="https://python-poetry.org/">Poetry</a></li>
-<li>Python 3.8+</li>
-<li>Create a virtual environment and install the dependencies</li>
-</ul>
-<pre><code class="language-sh">poetry install
-</code></pre>
-<ul>
-<li>Activate the virtual environment</li>
-</ul>
-<pre><code class="language-sh">poetry shell
-</code></pre>
-<h3 id="testing">Testing</h3>
-<pre><code class="language-sh">pytest
-</code></pre>
-<h3 id="documentation">Documentation</h3>
-<p>The documentation is automatically generated from the content of the <a href="https://github.com/sina-mansour/spectranorm/tree/master/docs">docs directory</a> and from the docstrings
- of the public signatures of the source code. The documentation is updated and published as a <a href="https://pages.github.com/">Github Pages page</a> automatically as part each release.</p>
-<h3 id="releasing">Releasing</h3>
-<p>Trigger the <a href="https://github.com/sina-mansour/spectranorm/actions/workflows/draft_release.yml">Draft release workflow</a>
-(press <em>Run workflow</em>). This will update the changelog &amp; version and create a GitHub release which is in <em>Draft</em> state.</p>
-<p>Find the draft release from the
-<a href="https://github.com/sina-mansour/spectranorm/releases">GitHub releases</a> and publish it. When
- a release is published, it'll trigger <a href="https://github.com/sina-mansour/spectranorm/blob/master/.github/workflows/release.yml">release</a> workflow which creates PyPI
- release and deploys updated documentation.</p>
-<h3 id="pre-commit">Pre-commit</h3>
-<p>Pre-commit hooks run all the auto-formatting (<code>ruff format</code>), linters (e.g. <code>ruff</code> and <code>mypy</code>), and other quality
- checks to make sure the changeset is in good shape before a commit/push happens.</p>
-<p>You can install the hooks with (runs for each commit):</p>
-<pre><code class="language-sh">pre-commit install
-</code></pre>
-<p>Or if you want them to run only for each push:</p>
-<pre><code class="language-sh">pre-commit install -t pre-push
-</code></pre>
-<p>Or if you want e.g. want to run all checks manually for all files:</p>
-<pre><code class="language-sh">pre-commit run --all-files
-</code></pre>
-<hr />
-<p>This project was generated using the <a href="https://github.com/woltapp/wolt-python-package-cookiecutter">wolt-python-package-cookiecutter</a> template.</p>
+<p>You can install the package using pip:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>spectranorm<span class="w"> </span>--upgrade
+</span></code></pre></div>
+<h2 id="getting-started">Getting Started</h2>
+<p>Check out the <a href="tutorials/">tutorials</a> to get started with using SpectraNorm.</p>
+<h2 id="api-reference">API Reference</h2>
+<p>The <a href="api/">API reference</a> provides detailed documentation of several functions and classes available in the package.</p>
+<h2 id="dig-deeper">Dig Deeper</h2>
+<p>For more in-depth information about the underlying theory and example uses of spectral normative modeling, check out <a href="https://github.com/sina-mansour/normative_brain_charts">this GitHub repository</a> which hosts several notebooks that implement spectral normative modeling of cortical thickness phenotypes on a large scale population-wide imaging biobank. You may also be interested in the [original paper][link to be added] describing the method and its application to brain imaging data.</p>
 
 
 
@@ -680,10 +1090,14 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.top"], "search": "assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.top", "navigation.expand", "navigation.tracking", "content.code.copy", "content.code.annotate"], "search": "assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="assets/javascripts/bundle.e71a0d61.min.js"></script>
+      
+        <script src="javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
       
     
   </body>
