@@ -82,6 +82,8 @@ class NormativePredictions:
     def extend_predictions(
         self,
         variable_of_interest: npt.NDArray[np.floating[Any]],
+        *,
+        likelihood_censoring_quantile: float = 0.01,
     ) -> NormativePredictions:
         """
         Extend the NormativePredictions (predictions dictionary) with additional
@@ -90,6 +92,13 @@ class NormativePredictions:
         Args:
             variable_of_interest: np.ndarray
                 The observed values for the variable(s) of interest.
+            likelihood_censoring_quantile: float (default=0.01)
+                Quantile below which log-likelihoods are censored for evaluation.
+                Note: by default, a censored log-likelihood is computed to avoid
+                extreme log-likelihood values for outliers. This affects several
+                resulting metrics that are based on log-likelihoods (e.g. MSLL).
+                If you want to compute the full (uncensored) log-likelihoods, set
+                `likelihood_censoring_quantile` to 0.
 
         Returns:
             NormativePredictions
@@ -103,6 +112,7 @@ class NormativePredictions:
                 variable_of_interest,
                 self.predictions["mu_estimate"],
                 self.predictions["std_estimate"],
+                censored_quantile=likelihood_censoring_quantile,
             )
         )
         self.predictions["centiles"] = utils.stats.compute_centiles_from_z_scores(
@@ -151,7 +161,10 @@ class NormativePredictions:
             NormativePredictions
                 Object containing the evaluation results.
         """
-        self.extend_predictions(variable_of_interest)
+        self.extend_predictions(
+            variable_of_interest,
+            likelihood_censoring_quantile=msll_censored_quantile,
+        )
         # Mean Absolute Error (MAE)
         self.evaluations["MAE"] = utils.metrics.compute_mae(
             y=self.predictions["variable_of_interest"],

@@ -98,17 +98,22 @@ def compute_censored_log_likelihood(
         predicted_sigmas,
     )
 
-    # Compute censoring threshold based on standard normal
-    censor_threshold = stats.norm.logpdf(
-        stats.norm.ppf(censored_quantile),
-        loc=0,
-        scale=1,
-    )
+    if censored_quantile <= 0:
+        return log_likelihoods
+
+    # Standardized residuals
+    z_scores = (observations - predicted_mus) / predicted_sigmas
+
+    # Two-sided z threshold based on standard normal
+    z_threshold = stats.norm.ppf(1 - censored_quantile)
+
+    # Replace extreme z's with constant tail mass
+    censored_value = np.log(2 * censored_quantile)
 
     # Apply censoring (two-sided) and return
     return np.where(
-        log_likelihoods < censor_threshold,
-        np.log(2 * censored_quantile),
+        np.abs(z_scores) > z_threshold,
+        censored_value,
         log_likelihoods,
     )
 
