@@ -20,36 +20,32 @@ __all__ = [
 class ParallelTqdm(Parallel):
     """joblib.Parallel, but with a tqdm progressbar
 
-    Additional parameters:
-    ----------------------
-    total_tasks: int, default: None
-        the number of expected jobs. Used in the tqdm progressbar.
-        If None, try to infer from the length of the called iterator, and
-        fallback to use the number of remaining items as soon as we finish
-        dispatching.
-        Note: use a list instead of an iterator if you want the total_tasks
-        to be inferred from its length.
-
-    desc: str, default: None
-        the description used in the tqdm progressbar.
-
-    disable_progressbar: bool, default: False
-        If True, a tqdm progressbar is not used.
-
-    show_joblib_header: bool, default: False
-        If True, show joblib header before the progressbar.
+    Args:
+        total_tasks: int, default: None
+            the number of expected jobs. Used in the tqdm progressbar.
+            If None, try to infer from the length of the called iterator, and
+            fallback to use the number of remaining items as soon as we finish
+            dispatching.
+            Note: use a list instead of an iterator if you want the total_tasks
+            to be inferred from its length.
+        desc: str, default: None
+            the description used in the tqdm progressbar.
+        disable_progressbar: bool, default: False
+            If True, a tqdm progressbar is not used.
+        show_joblib_header: bool, default: False
+            If True, show joblib header before the progressbar.
 
     Removed parameters:
-    -------------------
-    verbose: will be ignored
+        verbose: will be ignored
 
 
     Usage:
-    ------
-    >>> from joblib import delayed
-    >>> from time import sleep
-    >>> ParallelTqdm(n_jobs=-1)([delayed(sleep)(.1) for _ in range(10)])
-    80%|████████  | 8/10 [00:02<00:00,  3.12tasks/s]
+    > from joblib import delayed
+    >
+    > from time import sleep
+    >
+    > ParallelTqdm(n_jobs=-1)([delayed(sleep)(.1) for _ in range(10)])
+    >> 80%|████████  | 8/10 [00:02<00:00,  3.12tasks/s]
 
     """
 

@@ -4,7 +4,13 @@ repos:
     hooks:
       - id: check-ast
       - id: check-added-large-files
-        exclude: src/spectranorm/data/templates/.*  # exempt templates folder
+        args: ['--maxkb=2000']  # Increase limit to 2MB
+        # exempt certain paths
+        exclude: |
+          (?x)^(
+              src/spectranorm/data/templates/.*|
+              docs/tutorials/.*
+          )$
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-docstring-first

@@ -1,34 +1,78 @@
-site_name: "Spectranorm"
+site_name: "SpectraNorm"
 site_url: https://sina-mansour.github.io/spectranorm/
 repo_url: https://github.com/sina-mansour/spectranorm
 
 theme:
   name: material
-  icon:
-    logo: fontawesome/solid/brain
+  favicon: favicon.ico
+  logo: assets/logo-with-text-horizontal.svg
   features:
     - navigation.top
+    - navigation.expand      # Expand navigation sections by default
+    - navigation.tracking    # URL updates as you scroll
+    - content.code.copy      # Adds "Copy to clipboard" buttons
+    - content.code.annotate  # Allows (1) style code comments
   palette:
     - scheme: default
+      primary: teal
+      accent: deep orange
       toggle:
         icon: material/toggle-switch-off-outline
         name: Switch to dark mode
     - scheme: slate
+      primary: teal
+      accent: deep orange
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
 
-nav:
-  - Introduction: 'index.md'
-  - API: api_docs.md
-  - Changelog: changelog.md
-
 markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
   - pymdownx.snippets:
       check_paths: true
+  - pymdownx.superfences    # Required for nested code blocks/diagrams
+  - attr_list
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: 'index.md'
+  - Tutorials:
+    - Overview: tutorials/index.md
+    - Univariate Model: tutorials/univariate_model.ipynb
+    - Eigenmode Bases: tutorials/eigenmode_bases.ipynb
+    - Spectral Model: tutorials/spectral_model.ipynb
+  - API Reference:
+    - Overview: api/index.md
+    - Core SNM Functionality: api/snm.md
+    - Utilities:
+      - General: api/utils/general.md
+      - Graph Signal Processing: api/utils/gsp.md
+      - Metrics: api/utils/metrics.md
+      - Neuroimaging Tools: api/utils/nitools.md
+      - Parallel Processing: api/utils/parallel.md
+      - Statistics: api/utils/stats.md
+    - Changelog: changelog.md
+  - License: license.md
 
 plugins:
-  - search:
+  - search
+  - autorefs
+  - mkdocs-jupyter:
+      execute: false        # This tells MkDocs not to run the code cells
+      show_input: true      # Shows the code
+      include_source: true  # Allows users to download the original .ipynb
   - mkdocstrings:
       default_handler: python
       handlers:
@@ -36,4 +80,5 @@ plugins:
           options:
             show_signature_annotations: true
             show_source: true
+            show_root_heading: true
             show_submodules: true

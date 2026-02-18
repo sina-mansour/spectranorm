@@ -35,15 +35,13 @@ def ensure_dir(file_name: Path) -> Path:
     """
     Ensure that the directory for the given file name exists.
 
-    Parameters
-    ----------
-    file_name : Path
-        The file name for which to ensure the directory exists.
+    Args:
+        file_name: Path
+            The file name for which to ensure the directory exists.
 
-    Returns
-    -------
-    Path
-        The original file name.
+    Returns:
+        Path
+            The original file name.
     """
     file_name.parent.mkdir(parents=True, exist_ok=True)
     return file_name
@@ -57,18 +55,17 @@ def report_time(
     """
     Report the current time or the time elapsed since a given reference point.
 
-    Parameters
-    ----------
-    relative_to : float | None
-        The reference time in seconds since the epoch. If None, report the current time.
-    absolute : bool
-        If True, report the absolute time format (float). If False, report the time in a
-        human-readable format (str).
+    Args:
+        relative_to: float | None
+            The reference time in seconds since the epoch. If None, report the current
+            time.
+        absolute: bool
+            If True, report the absolute time format (float). If False, report the time
+            in a human-readable format (str).
 
-    Returns
-    -------
-    str | float
-        The current time or the elapsed time since the reference point.
+    Returns:
+        str | float
+            The current time or the elapsed time since the reference point.
     """
     if relative_to is not None:
         elapsed = time.time() - relative_to
@@ -148,10 +145,9 @@ def prepare_save_directory(directory: Path, subdirectory: str = "saved_model") -
         directory (Path): Path to a directory to save the model.
         subdirectory (str): Name of the subdirectory to create (default: "saved_model").
 
-    Returns
-    -------
-    Path
-        The path to the created subdirectory.
+    Returns:
+        Path
+            The path to the created subdirectory.
     """
     # Check if the directory exists
     if not directory.exists():
@@ -177,10 +173,9 @@ def validate_load_directory(directory: Path, subdirectory: str = "saved_model") 
         directory (Path): Path to the main directory.
         subdirectory (str): Name of the subdirectory to check (default: "saved_model").
 
-    Returns
-    -------
-    Path
-        The path to the validated subdirectory.
+    Returns:
+        Path
+            The path to the validated subdirectory.
     """
     # Check if the directory exists
     if not directory.exists():
