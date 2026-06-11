@@ -37,6 +37,7 @@ Check out the [tutorials](tutorials/index.md) to get started with using SpectraN
 ## API Reference
 
 The [API reference](api/index.md) provides detailed documentation of several functions and classes available in the package.
+
 ## Dig Deeper
 
-For more in-depth information about the underlying theory and example uses of spectral normative modeling, check out [this GitHub repository](https://github.com/sina-mansour/normative_brain_charts) which hosts several notebooks that implement spectral normative modeling of cortical thickness phenotypes on a large scale population-wide imaging biobank. You may also be interested in the [original paper][link to be added] describing the method and its application to brain imaging data.
+For more in-depth information about the underlying theory and example uses of spectral normative modeling, check out [this GitHub repository](https://github.com/sina-mansour/normative_brain_charts) which hosts several notebooks that implement spectral normative modeling of cortical thickness phenotypes on a large scale population-wide imaging biobank. You may also be interested in the [original paper](https://doi.org/10.1101/2025.01.16.25320639) describing the method and its application to brain imaging data.
