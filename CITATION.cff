@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "SpectraNorm: a Python package for spectral normative modeling"
-version: 0.0.0
-date-released: "2026-01-01"
+version: 0.1.4
+date-released: "2026-08-24"
 abstract: >-
   A Python package for spectral normative modeling of neuroimaging and other
   high-dimensional data. Spectral normative modeling (SNM) leverages
