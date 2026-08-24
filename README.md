@@ -1,91 +1,88 @@
-# spectranorm
+<p align="center">
+  <img src="https://sina-mansour.github.io/spectranorm/assets/logo-with-text-horizontal.svg" alt="SpectraNorm" width="420">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/spectranorm?style=flat-square)](https://pypi.python.org/pypi/spectranorm/)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/spectranorm?style=flat-square)](https://pypi.python.org/pypi/spectranorm/)
-[![PyPI - License](https://img.shields.io/pypi/l/spectranorm?style=flat-square)](https://pypi.python.org/pypi/spectranorm/)
-[![Coookiecutter - Wolt](https://img.shields.io/badge/cookiecutter-Wolt-00c2e8?style=flat-square&logo=cookiecutter&logoColor=D4AA00&link=https://github.com/woltapp/wolt-python-package-cookiecutter)](https://github.com/woltapp/wolt-python-package-cookiecutter)
-
-
----
-
-**Documentation**: [https://sina-mansour.github.io/spectranorm](https://sina-mansour.github.io/spectranorm)
-
-**Source Code**: [https://github.com/sina-mansour/spectranorm](https://github.com/sina-mansour/spectranorm)
-
-**PyPI**: [https://pypi.org/project/spectranorm/](https://pypi.org/project/spectranorm/)
+<p align="center">
+  <a href="https://pypi.python.org/pypi/spectranorm/"><img src="https://img.shields.io/pypi/v/spectranorm?style=flat-square" alt="PyPI"></a>
+  <a href="https://pypi.python.org/pypi/spectranorm/"><img src="https://img.shields.io/pypi/pyversions/spectranorm?style=flat-square" alt="Python versions"></a>
+  <a href="https://doi.org/10.5281/zenodo.22078039"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22078039.svg" alt="DOI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPLv3%20%2F%20Commercial-green?style=flat-square" alt="License"></a>
+</p>
 
 ---
 
-A Python package for spectral normative modeling of neuroimaging and other high-dimensional data.
+**Documentation**: [sina-mansour.github.io/spectranorm](https://sina-mansour.github.io/spectranorm)
+&nbsp;&nbsp;|&nbsp;&nbsp;
+**Source Code**: [github.com/sina-mansour/spectranorm](https://github.com/sina-mansour/spectranorm)
+&nbsp;&nbsp;|&nbsp;&nbsp;
+**PyPI**: [pypi.org/project/spectranorm](https://pypi.org/project/spectranorm/)
+
+---
+
+SpectraNorm is a Python package for **spectral normative modeling** of high-dimensional
+data.
+
+Conventional normative models fit one model per feature, which becomes intractable at
+high spatial resolution. SpectraNorm instead fits the model in a spectral basis, using
+eigenmodes to represent the signal compactly. A single fitted model then yields normative
+ranges for arbitrary regions of interest, at any spatial scale, without refitting.
 
 ## Installation
 
 ```sh
-pip install spectranorm
+pip install spectranorm --upgrade
 ```
 
-## Development
+Requires Python 3.10 or newer. Installation takes under a minute on a typical laptop.
 
-* Clone this repository
-* Requirements:
-  * [Poetry](https://python-poetry.org/)
-  * Python 3.8+
-* Create a virtual environment and install the dependencies
+## Getting Started
+
+The [tutorials](https://sina-mansour.github.io/spectranorm/tutorials/) walk through
+fitting a univariate normative model, constructing eigenmode bases, and fitting the full
+spectral model. The [API reference](https://sina-mansour.github.io/spectranorm/api/)
+documents the available classes and functions in detail.
+
+## Applications
+
+Studies that use SpectraNorm:
+
+- **Mansour L., S., et al. (2026). Spectral Normative Modeling of Brain Structure. _medRxiv_.**
+  DOI: [10.1101/2025.01.16.25320639](https://doi.org/10.1101/2025.01.16.25320639)
+  &nbsp;·&nbsp;
+  [Accompanying repository](https://github.com/sina-mansour/normative_brain_charts)
+
+## Citing
+
+If you use SpectraNorm, please cite the software:
+
+> **Mansour L., S. (2026). SpectraNorm: a Python package for spectral normative modeling. _Zenodo_.**
+> DOI: [10.5281/zenodo.22078039](https://doi.org/10.5281/zenodo.22078039)
+
+along with the manuscript describing the method:
+
+> **Mansour L., S., et al. (2026). Spectral Normative Modeling of Brain Structure. _medRxiv_.**
+> DOI: [10.1101/2025.01.16.25320639](https://doi.org/10.1101/2025.01.16.25320639)
+
+## License
+
+SpectraNorm is **dual licensed**:
+
+- **Non-commercial / Academic use**: [GNU AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html)
+- **Commercial use**: A separate commercial license is required
+
+See the [LICENSE](LICENSE) file for full details.
+
+## Contributing
+
+Development setup, testing, and the release process are documented in
+[RELEASING.md](RELEASING.md). In brief:
 
 ```sh
 poetry install
-```
-
-* Activate the virtual environment
-
-```sh
-poetry shell
-```
-
-### Testing
-
-```sh
-pytest
-```
-
-### Documentation
-
-The documentation is automatically generated from the content of the [docs directory](https://github.com/sina-mansour/spectranorm/tree/master/docs) and from the docstrings
- of the public signatures of the source code. The documentation is updated and published as a [Github Pages page](https://pages.github.com/) automatically as part each release.
-
-### Releasing
-
-Trigger the [Draft release workflow](https://github.com/sina-mansour/spectranorm/actions/workflows/draft_release.yml)
-(press _Run workflow_). This will update the changelog & version and create a GitHub release which is in _Draft_ state.
-
-Find the draft release from the
-[GitHub releases](https://github.com/sina-mansour/spectranorm/releases) and publish it. When
- a release is published, it'll trigger [release](https://github.com/sina-mansour/spectranorm/blob/master/.github/workflows/release.yml) workflow which creates PyPI
- release and deploys updated documentation.
-
-### Pre-commit
-
-Pre-commit hooks run all the auto-formatting (`ruff format`), linters (e.g. `ruff` and `mypy`), and other quality
- checks to make sure the changeset is in good shape before a commit/push happens.
-
-You can install the hooks with (runs for each commit):
-
-```sh
-pre-commit install
-```
-
-Or if you want them to run only for each push:
-
-```sh
-pre-commit install -t pre-push
-```
-
-Or if you want e.g. want to run all checks manually for all files:
-
-```sh
-pre-commit run --all-files
+poetry run pre-commit install
+poetry run pytest
 ```
 
 ---
 
-This project was generated using the [wolt-python-package-cookiecutter](https://github.com/woltapp/wolt-python-package-cookiecutter) template.
+<sub>Generated using the <a href="https://github.com/woltapp/wolt-python-package-cookiecutter">wolt-python-package-cookiecutter</a> template.</sub>

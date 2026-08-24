@@ -136,9 +136,7 @@ automatically:
 ### Afterwards
 
 Confirm the new version on PyPI, that the docs site rebuilt, and that the
-Zenodo record exists. Check the licence field on the Zenodo record: Zenodo
-cannot parse the dual licence and may fall back to CC-BY-4.0, which is wrong.
-Fix it in the Zenodo web interface if so.
+Zenodo record exists.
 
 **Never edit `version` in `pyproject.toml` or `CITATION.cff` by hand.**
 The release workflow owns both, and a manual edit causes a mismatch between
@@ -147,6 +145,52 @@ the tag, the PyPI release, and the archived record.
 **Never publish with `poetry publish` directly.** It uploads to PyPI without
 creating a GitHub release, so no tag, no changelog entry, and no Zenodo
 deposit. Always release through the workflow.
+
+### Zenodo metadata
+
+Most of the record is populated automatically from `.zenodo.json`, including
+the licence, which is set to `other-nc` ("Other (Non-Commercial)"). This is an
+approximation of the dual licence, but an accurate one: Zenodo's vocabulary has
+no identifier for AGPL-3.0 with a non-commercial restriction, and `other-nc`
+is the closest correct choice. Without it, Zenodo defaults to CC-BY-4.0, which
+would be wrong.
+
+Two fields cannot be set from `.zenodo.json`, because they are InvenioRDM
+custom fields with no equivalent in the legacy metadata schema that
+`.zenodo.json` uses:
+
+- **Programming language**: Python
+- **Development status**: Active
+
+These should carry over from the previous version, since Zenodo inherits
+metadata when creating a new version. Check once and only re-enter them if they
+did not.
+
+**Optional refinement.** If you want the full dual licence text on the record
+rather than "Other (Non-Commercial)", edit the record and set a custom licence:
+
+- Title: `Dual licence: AGPL-3.0 for non-commercial use, or commercial licence for commercial use`
+- Link: `https://github.com/sina-mansour/spectranorm/blob/main/LICENSE`
+- Description: `Free for non-commercial use, including academic research and teaching, under the terms of the GNU Affero General Public License v3.0. Commercial use requires a separate licence. See the LICENSE file in the repository for full terms and contact details.`
+- Copyright: `© 2025 Sina Mansour L. and collaborators.`
+
+This must be redone after every release, since `.zenodo.json` will overwrite
+the licence field each time. Skip it unless the fuller wording matters.
+
+**Verifying.** The public record page is authoritative. API responses may be
+served from cache:
+
+```bash
+curl -s -H "Accept: application/vnd.inveniordm.v1+json" \
+  "https://zenodo.org/api/records/<id>" | python3 -m json.tool | grep -A8 '"rights"'
+```
+
+Saving may fail with a generic error if Zenodo's search service is degraded
+(check <https://stats.uptimerobot.com/vlYOVuWgM>). Retry later; metadata edits
+do not affect the DOI or the files.
+
+**At the 0.1.5 release**, confirm that `other-nc` was applied and that the two
+custom fields carried over. If both held, this section can be shortened.
 
 ### If the release workflow fails
 
@@ -175,4 +219,6 @@ not claim a version that was never released.
 - Zenodo only archives releases published **after** the repository was enabled
   in Zenodo's GitHub settings.
 - The PyPI upload needs the `PYPI_TOKEN` repository secret.
+- `.zenodo.json` follows Zenodo's legacy deposit schema, documented at
+  <https://developers.zenodo.org/#deposit-metadata>.
 - Changes prior to 0.1.4 were not recorded in `CHANGELOG.md`.
