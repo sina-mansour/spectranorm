@@ -4327,12 +4327,9 @@ class SpectralNormativeModel:
             ).sum(axis=0)
             # avoid negative values due to numerical issues
             # if it happens, ignore off-diagonal term
-            try:
-                sample_query_stds[sample_idx] = np.sqrt(
-                    diagonal_term + off_diagonal_term,
-                )
-            except RuntimeWarning:
-                sample_query_stds[sample_idx] = np.sqrt(diagonal_term)
+            variances = diagonal_term + off_diagonal_term
+            variances[variances < 0] = diagonal_term[variances < 0]
+            sample_query_stds[sample_idx] = np.sqrt(variances)
 
         predictions_dict["std_estimate"] = sample_query_stds
 
