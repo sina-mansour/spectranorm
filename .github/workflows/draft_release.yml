@@ -15,7 +15,7 @@ jobs:
   draft-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/python-poetry-env
 
@@ -43,7 +43,7 @@ jobs:
           poetry run kacl-cli get "$version" > release_notes.md
 
       - name: Commit changes
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v11
         with:
           add: 'CHANGELOG.md pyproject.toml CITATION.cff'
           message: 'Release ${{ steps.updated_version.outputs.version }}'

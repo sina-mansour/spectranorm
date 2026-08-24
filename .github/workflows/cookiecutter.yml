@@ -4,13 +4,17 @@ on:
   schedule:
     - cron: "0 0 * * *"  # at the end of every day
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   auto-update-project:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -23,12 +27,12 @@ jobs:
 
       - name: Check if there are changes
         id: changes
-        run: echo "::set-output name=changed::$(git status --porcelain | wc -l)"
+        run: echo "changed=$(git status --porcelain | wc -l)" >> "$GITHUB_OUTPUT"
 
       - name: apply additional changes and fixes
         if: steps.changes.outputs.changed > 0
         run: |
-          poetry lock --no-update  # add new dependencies
+          poetry lock  # add new dependencies
           poetry install
           poetry run pre-commit run -a || true  # we have to fix other issues manually
 
@@ -37,30 +41,23 @@ jobs:
         if: steps.changes.outputs.changed > 0
         shell: bash
         run: |
-          CURRENT_VERSION=$(git show HEAD:.cruft.json | jello -r "_['commit'][:8]")
-          NEXT_VERSION=$(jello -r "_['commit'][:8]" < .cruft.json)
-          echo ::set-output name="current_version::$CURRENT_VERSION"
-          echo ::set-output name="next_version::$NEXT_VERSION"
+          current_version=$(git show HEAD:.cruft.json | jello -r "_['commit'][:8]")
+          next_version=$(jello -r "_['commit'][:8]" < .cruft.json)
+          echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
 
       - name: Get changelog
-        id: get_changelog
         if: steps.changes.outputs.changed > 0
         shell: bash
         run: |
-          TEMPLATE=$(jello -r "_['template']" < .cruft.json)
-          git clone "$TEMPLATE" /tmp/template
-          cd /tmp/template
-          body=$( (echo "Date;Change;Hash"; git log --pretty=format:"%as;%s;%h" ${{ steps.get_versions.outputs.current_version }}..${{ steps.get_versions.outputs.next_version }}) | tabulate --header --format github -s ';' -)
-          body=$(cat <<EOF
-          Changes from $TEMPLATE
-
-          $body
-          EOF
-          )
-          body="${body//'%'/'%25'}"
-          body="${body//$'\n'/'%0A'}"
-          body="${body//$'\r'/'%0D'}"
-          echo ::set-output name="changelog::$body"
+          template=$(jello -r "_['template']" < .cruft.json)
+          git clone "$template" /tmp/template
+          table=$( (echo "Date;Change;Hash"; git -C /tmp/template log --pretty=format:"%as;%s;%h" ${{ steps.get_versions.outputs.current_version }}..${{ steps.get_versions.outputs.next_version }}) | tabulate --header --format github -s ';' -)
+          {
+            echo "Changes from $template"
+            echo ""
+            echo "$table"
+          } > "$GITHUB_WORKSPACE/template_changelog.md"
 
       # behaviour if PR already exists: https://github.com/marketplace/actions/create-pull-request#action-behaviour
       - name: Create Pull Request
@@ -68,12 +65,12 @@ jobs:
           # a PAT is required to be able to update workflows
           GITHUB_TOKEN: ${{ secrets.AUTO_UPDATE_GITHUB_TOKEN }}
         if: ${{ steps.changes.outputs.changed > 0 && env.GITHUB_TOKEN != 0 }}
-        uses: peter-evans/create-pull-request@v3
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ env.GITHUB_TOKEN }}
           commit-message: >-
             chore: update project structure to ${{ steps.get_versions.outputs.next_version }}
           title: "[Actions] Auto-Update cookiecutter template"
-          body: ${{ steps.get_changelog.outputs.changelog }}
+          body-path: template_changelog.md
           branch: chore/auto-update-project-from-template
           delete-branch: true
