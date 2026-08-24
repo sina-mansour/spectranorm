@@ -59,6 +59,11 @@ in `CHANGELOG.md` in the same commit. Use `Added`, `Changed`, `Deprecated`,
 `Removed`, `Fixed`, or `Security`. Describe the effect on the user, not the
 mechanism. Internal refactors, tests, and CI changes need no entry.
 
+Keep nothing below the `## Unreleased` section other than released version
+sections. `kacl-cli release` absorbs everything between `## Unreleased` and the
+next `##` heading into the new version's release notes, so stray prose ends up
+in the GitHub release description.
+
 ---
 
 ## 2. Pushing
@@ -76,8 +81,8 @@ and `mkdocs build`.
 a release can only be cut from `main`, so anything intended for the next
 release must reach `main` first.
 
-Check the Actions tab after pushing. The multi-version `pytest` matrix
-sometimes catches things a local run on one interpreter does not.
+Check the Actions tab, or `gh run watch`, after pushing. The multi-version
+`pytest` matrix sometimes catches things a local run on one interpreter does not.
 
 **After pulling someone else's changes**, or your own from another machine,
 run `poetry install` if `poetry.lock` changed.
@@ -98,27 +103,42 @@ run `poetry install` if `poetry.lock` changed.
 - `minor` for new functionality that does not break existing usage
 - `major` for breaking changes
 
-**Run it.**
+### From the terminal
 
-4. GitHub, Actions tab, "Draft a release", Run workflow, on `main`, enter the bump.
+```bash
+gh workflow run draft_release.yml --ref main -f version=patch
+gh run watch                       # wait for the draft to be created
+git pull                           # collect the version bump commit
+gh release view <version>          # check the notes read sensibly
+gh release edit <version> --draft=false    # publish
+```
 
-   This bumps the version in `pyproject.toml`, moves `Unreleased` into a dated
-   section in `CHANGELOG.md`, updates `version` and `date-released` in
-   `CITATION.cff`, commits all three, tags, and creates a **draft** release.
-   Nothing is published yet.
+### From the browser
 
-5. Releases page, open the draft, check the notes read sensibly.
+GitHub, Actions tab, "Draft a release", Run workflow, on `main`, enter the bump.
+Then Releases page, open the draft, check it, click **Publish**. Afterwards
+`git pull` locally.
 
-6. Click **Publish**. This triggers, automatically:
-   - PyPI upload (`release.yml`)
-   - documentation deploy to GitHub Pages
-   - Zenodo deposit and DOI
+### What each step does
 
-7. `git pull`, to collect the version bump commit the workflow made.
+The **draft** step bumps the version in `pyproject.toml`, moves `Unreleased`
+into a dated section in `CHANGELOG.md`, updates `version` and `date-released`
+in `CITATION.cff`, commits all three, tags, and creates a draft release.
+Nothing is published yet.
 
-8. Check the Zenodo record. Confirm the licence field: Zenodo cannot parse the
-   dual licence and may fall back to CC-BY-4.0, which is wrong. Fix it in the
-   Zenodo web interface if so.
+**Publishing** the draft fires the `release: published` event, which triggers,
+automatically:
+
+- PyPI upload (`release.yml`)
+- documentation deploy to GitHub Pages
+- Zenodo deposit and DOI
+
+### Afterwards
+
+Confirm the new version on PyPI, that the docs site rebuilt, and that the
+Zenodo record exists. Check the licence field on the Zenodo record: Zenodo
+cannot parse the dual licence and may fall back to CC-BY-4.0, which is wrong.
+Fix it in the Zenodo web interface if so.
 
 **Never edit `version` in `pyproject.toml` or `CITATION.cff` by hand.**
 The release workflow owns both, and a manual edit causes a mismatch between
@@ -147,10 +167,12 @@ not claim a version that was never released.
 
 ## Occasional maintenance
 
-- `poetry run pre-commit autoupdate` refreshes hook versions. The pinned
-  `pre-commit-hooks` revision is old; update it when convenient, then run
-  `poetry run pre-commit run --all-files` to catch anything the newer hooks
-  flag.
+- `poetry run pre-commit autoupdate` refreshes hook versions, then
+  `poetry run pre-commit run --all-files` to catch anything the newer hooks flag.
+- Bump GitHub Action versions in `.github/workflows/` and in
+  `.github/actions/python-poetry-env/action.yml` when runner deprecation
+  warnings appear.
 - Zenodo only archives releases published **after** the repository was enabled
   in Zenodo's GitHub settings.
 - The PyPI upload needs the `PYPI_TOKEN` repository secret.
+- Changes prior to 0.1.4 were not recorded in `CHANGELOG.md`.
