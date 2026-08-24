@@ -1,0 +1,32 @@
+{
+  "upload_type": "software",
+  "title": "SpectraNorm: a Python package for spectral normative modeling",
+  "description": "<p>A Python package for spectral normative modeling of neuroimaging and other high-dimensional data. Spectral normative modeling (SNM) leverages eigenmodes for efficient spatial reconstruction, generating normative ranges for arbitrary regions of interest across spatial scales.</p><p>Documentation: <a href=\"https://sina-mansour.github.io/spectranorm/\">https://sina-mansour.github.io/spectranorm/</a></p>",
+  "creators": [
+    {
+      "name": "Mansour L., Sina",
+      "affiliation": "National University of Singapore & The University of Melbourne",
+      "orcid": "0000-0002-5695-5696"
+    }
+  ],
+  "access_right": "open",
+  "keywords": [
+    "normative modeling",
+    "brain charts",
+    "graph signal processing",
+    "brain eigenmodes",
+    "neuroimaging"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://sina-mansour.github.io/spectranorm/",
+      "relation": "isDocumentedBy",
+      "resource_type": "publication-softwaredocumentation"
+    },
+    {
+      "identifier": "https://pypi.org/project/spectranorm/",
+      "relation": "isIdenticalTo",
+      "resource_type": "software"
+    }
+  ]
+}

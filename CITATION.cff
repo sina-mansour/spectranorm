@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "SpectraNorm: a Python package for spectral normative modeling"
+version: 0.0.0
+date-released: "2026-01-01"
+abstract: >-
+  A Python package for spectral normative modeling of neuroimaging and other
+  high-dimensional data. Spectral normative modeling (SNM) leverages
+  eigenmodes for efficient spatial reconstruction, generating normative ranges
+  for arbitrary regions of interest across spatial scales.
+authors:
+  - given-names: Sina
+    family-names: "Mansour L."
+    orcid: "https://orcid.org/0000-0002-5695-5696"
+    affiliation: "National University of Singapore & The University of Melbourne"
+    email: sina.mansour.lakouraj@gmail.com
+repository-code: "https://github.com/sina-mansour/spectranorm"
+url: "https://sina-mansour.github.io/spectranorm/"
+license-url: "https://github.com/sina-mansour/spectranorm/blob/main/LICENSE"
+keywords:
+  - normative modeling
+  - brain charts
+  - graph signal processing
+  - brain eigenmodes
+  - neuroimaging
