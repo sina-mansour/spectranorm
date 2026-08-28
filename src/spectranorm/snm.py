@@ -242,7 +242,7 @@ class NormativePredictions:
         """
         predictions = self.predictions.copy()
         # Flatten the predictions dictionary if multiple queries are predicted
-        for key in predictions:
+        for key in list(predictions):
             if predictions[key].ndim > 1:
                 if predictions[key].shape[1] == 1:
                     predictions[key] = predictions[key].flatten()
